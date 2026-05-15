@@ -1,0 +1,51 @@
+{
+  "name": "vsc-pdf-annotate",
+  "displayName": "PDF Annotate",
+  "description": "Annotate PDF files in VS Code with automatic sidecar saves.",
+  "version": "0.0.1",
+  "publisher": "zee",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:pdfAnnotator.editor"
+  ],
+  "main": "./out/src/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "pdfAnnotator.editor",
+        "displayName": "PDF Annotator",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "sync:pdfjs": "cp node_modules/pdfjs-dist/build/pdf.min.js media/libs/pdf.min.js && cp node_modules/pdfjs-dist/build/pdf.worker.min.js media/libs/pdf.worker.min.js",
+    "package": "vscode-vsce package",
+    "pretest": "npm run compile",
+    "test": "echo \"No tests configured yet\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.6.2",
+    "pdfjs-dist": "^3.11.174",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
+}

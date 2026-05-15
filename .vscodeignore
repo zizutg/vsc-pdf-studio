@@ -1,0 +1,8 @@
+.gitignore
+.vscode/**
+node_modules/**
+src/**
+models/**
+storage/**
+tsconfig.json
+README.md

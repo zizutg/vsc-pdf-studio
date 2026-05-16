@@ -17,8 +17,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     height: baseViewport.height
   });
   const pages = [];
-
-  container.innerHTML = '';
+  const fragment = document.createDocumentFragment();
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber);
@@ -41,7 +40,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     textLayer.style.height = `${viewport.height}px`;
 
     pageShell.append(pdfCanvas, textLayer, drawingCanvas);
-    container.append(pageShell);
+    fragment.append(pageShell);
 
     await page.render({
       canvasContext: pdfCanvas.getContext('2d'),
@@ -69,7 +68,8 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
 
   return {
     pages,
-    resolvedScale
+    resolvedScale,
+    fragment
   };
 }
 

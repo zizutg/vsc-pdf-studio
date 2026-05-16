@@ -114,6 +114,7 @@ const messageBoxEl = document.querySelector('#message-box');
 
 let drawingLayer = null;
 let zoomRerenderTimer = null;
+let zoomRenderRequestId = 0;
 
 const autoSaver = createAutoSaver(() => {
   requestSave();
@@ -163,11 +164,23 @@ function requestSave() {
 }
 
 async function rerenderPages() {
+  const requestId = ++zoomRenderRequestId;
   const workspaceSize = {
     width: workspaceEl.clientWidth,
     height: workspaceEl.clientHeight
   };
-  const { pages, resolvedScale } = await renderPdf(state.pdfBase64, pagesEl, getZoomConfig(), workspaceSize);
+  const { pages, resolvedScale, fragment } = await renderPdf(
+    state.pdfBase64,
+    pagesEl,
+    getZoomConfig(),
+    workspaceSize
+  );
+
+  if (requestId !== zoomRenderRequestId) {
+    return;
+  }
+
+  pagesEl.replaceChildren(fragment);
   state.pageEntries = pages;
   state.zoom = resolvedScale;
   state.renderedZoom = resolvedScale;

@@ -352,8 +352,8 @@ function renderSelectionAction() {
   actions.style.left = `${state.selectionAction.left}px`;
   actions.style.top = `${state.selectionAction.top}px`;
   actions.innerHTML = `
-    <button type="button" class="selection-action-button" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
-    <button type="button" class="selection-action-button" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
+    <button type="button" class="selection-action-button selection-action-highlight" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
+    <button type="button" class="selection-action-button selection-action-comment" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
   `;
   actions.addEventListener('mousedown', (event) => {
     event.preventDefault();
@@ -665,14 +665,15 @@ function snapshotSelection() {
     text: selection.toString().trim()
   };
   const firstRect = rects[0];
+  const lastRect = rects[rects.length - 1];
   state.selectionAction = {
     left: Math.min(
-      pageEntry.pageShell.offsetLeft + firstRect.x,
+      pageEntry.pageShell.offsetLeft + lastRect.x + lastRect.width,
       workspaceEl.scrollLeft + workspaceEl.clientWidth - 88
     ),
     top: Math.min(
       workspaceEl.scrollTop + workspaceEl.clientHeight - 26,
-      pageEntry.pageShell.offsetTop + firstRect.y + firstRect.height + 3
+      pageEntry.pageShell.offsetTop + firstRect.y + firstRect.height + 16
     )
   };
   commentButtonEl.disabled = false;

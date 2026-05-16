@@ -36,14 +36,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SaveManager = void 0;
 const fs = __importStar(require("node:fs/promises"));
 const pdf_lib_1 = require("pdf-lib");
+const ANNOTATION_DATA_KEY = 'PdfAnnotatorData';
+const BASE_PDF_KEY = 'PdfAnnotatorBase';
 class SaveManager {
     sessionBasePdf = new Map();
+    sessionAnnotations = new Map();
     async getPdfBytes(pdfUri) {
-        const pdfBytes = await fs.readFile(pdfUri.fsPath);
-        if (!this.sessionBasePdf.has(pdfUri.toString())) {
-            this.sessionBasePdf.set(pdfUri.toString(), new Uint8Array(pdfBytes));
+        const cacheKey = pdfUri.toString();
+        if (!this.sessionBasePdf.has(cacheKey)) {
+            await this.loadSessionState(pdfUri);
         }
-        return new Uint8Array(pdfBytes);
+        return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
+    }
+    async getAnnotations(pdfUri) {
+        const cacheKey = pdfUri.toString();
+        if (!this.sessionAnnotations.has(cacheKey)) {
+            await this.loadSessionState(pdfUri);
+        }
+        return structuredClone(this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument());
     }
     async save(pdfUri, annotations) {
         const cacheKey = pdfUri.toString();
@@ -53,6 +63,7 @@ class SaveManager {
         }
         const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
         const pages = pdfDocument.getPages();
+        const noteFont = await pdfDocument.embedFont(pdf_lib_1.StandardFonts.Helvetica);
         for (const stroke of annotations.strokes) {
             const page = pages[stroke.page - 1];
             if (!page || stroke.points.length < 2) {
@@ -92,11 +103,97 @@ class SaveManager {
                 });
             }
         }
+        for (const comment of annotations.comments) {
+            const page = pages[comment.page - 1];
+            if (!page || !comment.rects.length || !comment.text.trim()) {
+                continue;
+            }
+            const anchorRect = comment.rects[0];
+            const scaleX = page.getWidth() / Math.max(comment.viewportWidth, 1);
+            const scaleY = page.getHeight() / Math.max(comment.viewportHeight, 1);
+            const markerSize = 14;
+            const markerX = (anchorRect.x + anchorRect.width) * scaleX + 4;
+            const markerY = page.getHeight() - anchorRect.y * scaleY - markerSize;
+            const calloutWidth = Math.min(page.getWidth() * 0.42, 180);
+            const fontSize = 9;
+            const lineHeight = 11;
+            const lines = wrapText(comment.text.trim(), 34).slice(0, 5);
+            const calloutHeight = Math.max(28, 12 + lines.length * lineHeight);
+            const calloutX = Math.min(Math.max(8, markerX + markerSize + 6), page.getWidth() - calloutWidth - 8);
+            const calloutY = Math.max(8, Math.min(page.getHeight() - calloutHeight - 8, markerY - 6));
+            page.drawRectangle({
+                x: markerX,
+                y: markerY,
+                width: markerSize,
+                height: markerSize,
+                color: toRgb(comment.color),
+                opacity: 0.9,
+                borderWidth: 0
+            });
+            page.drawText('C', {
+                x: markerX + 4,
+                y: markerY + 3,
+                size: 8,
+                font: noteFont,
+                color: (0, pdf_lib_1.rgb)(1, 1, 1)
+            });
+            page.drawRectangle({
+                x: calloutX,
+                y: calloutY,
+                width: calloutWidth,
+                height: calloutHeight,
+                color: (0, pdf_lib_1.rgb)(1, 0.988, 0.855),
+                opacity: 0.95,
+                borderColor: toRgb(comment.color),
+                borderWidth: 1
+            });
+            lines.forEach((line, index) => {
+                page.drawText(line, {
+                    x: calloutX + 8,
+                    y: calloutY + calloutHeight - 14 - index * lineHeight,
+                    size: fontSize,
+                    font: noteFont,
+                    color: (0, pdf_lib_1.rgb)(0.18, 0.18, 0.2)
+                });
+            });
+        }
+        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(ANNOTATION_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(annotations)));
+        const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
+            Type: 'EmbeddedFile'
+        });
+        const baseStreamRef = pdfDocument.context.register(baseStream);
+        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(BASE_PDF_KEY), baseStreamRef);
         const output = await pdfDocument.save();
         await fs.writeFile(pdfUri.fsPath, output);
+        this.sessionAnnotations.set(cacheKey, structuredClone(annotations));
     }
     disposeSession(pdfUri) {
-        this.sessionBasePdf.delete(pdfUri.toString());
+        const cacheKey = pdfUri.toString();
+        this.sessionBasePdf.delete(cacheKey);
+        this.sessionAnnotations.delete(cacheKey);
+    }
+    async loadSessionState(pdfUri) {
+        const cacheKey = pdfUri.toString();
+        const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
+        const pdfDocument = await pdf_lib_1.PDFDocument.load(pdfBytes);
+        const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(BASE_PDF_KEY));
+        const basePdfBytes = embeddedBase instanceof pdf_lib_1.PDFRawStream ? (0, pdf_lib_1.decodePDFRawStream)(embeddedBase).decode() : pdfBytes;
+        this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
+        const rawAnnotationData = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(ANNOTATION_DATA_KEY));
+        const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString || rawAnnotationData instanceof pdf_lib_1.PDFString
+            ? rawAnnotationData.decodeText()
+            : null;
+        if (!annotationJson) {
+            this.sessionAnnotations.set(cacheKey, emptyAnnotationDocument());
+            return;
+        }
+        try {
+            const parsed = JSON.parse(annotationJson);
+            this.sessionAnnotations.set(cacheKey, normalizeAnnotationDocument(parsed));
+        }
+        catch {
+            this.sessionAnnotations.set(cacheKey, emptyAnnotationDocument());
+        }
     }
 }
 exports.SaveManager = SaveManager;
@@ -123,5 +220,43 @@ function toRgb(hex) {
     const green = ((value >> 8) & 0xff) / 255;
     const blue = (value & 0xff) / 255;
     return (0, pdf_lib_1.rgb)(red, green, blue);
+}
+function wrapText(text, maxChars) {
+    const words = text.replace(/\s+/g, ' ').trim().split(' ');
+    const lines = [];
+    let currentLine = '';
+    for (const word of words) {
+        const candidate = currentLine ? `${currentLine} ${word}` : word;
+        if (candidate.length <= maxChars) {
+            currentLine = candidate;
+            continue;
+        }
+        if (currentLine) {
+            lines.push(currentLine);
+        }
+        currentLine = word;
+    }
+    if (currentLine) {
+        lines.push(currentLine);
+    }
+    return lines.length ? lines : [''];
+}
+function emptyAnnotationDocument() {
+    return {
+        version: 1,
+        updatedAt: new Date(0).toISOString(),
+        strokes: [],
+        highlights: [],
+        comments: []
+    };
+}
+function normalizeAnnotationDocument(value) {
+    return {
+        version: 1,
+        updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date(0).toISOString(),
+        strokes: Array.isArray(value.strokes) ? value.strokes : [],
+        highlights: Array.isArray(value.highlights) ? value.highlights : [],
+        comments: Array.isArray(value.comments) ? value.comments : []
+    };
 }
 //# sourceMappingURL=saveManager.js.map

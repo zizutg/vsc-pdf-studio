@@ -36,7 +36,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PdfEditorProvider = void 0;
 const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
-const annotation_1 = require("../models/annotation");
 class PdfEditorProvider {
     context;
     saveManager;
@@ -76,12 +75,13 @@ class PdfEditorProvider {
     async postInitialState(uri, webview) {
         try {
             const pdfBuffer = await this.saveManager.getPdfBytes(uri);
+            const annotations = await this.saveManager.getAnnotations(uri);
             const message = {
                 type: 'init',
                 payload: {
                     fileName: path.basename(uri.fsPath),
                     pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
-                    annotations: (0, annotation_1.emptyAnnotationDocument)()
+                    annotations
                 }
             };
             webview.postMessage(message);

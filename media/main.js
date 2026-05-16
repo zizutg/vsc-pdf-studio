@@ -22,13 +22,24 @@ const icons = {
   highlighter: createLucideIcon(
     '<path d="m9 11-6 6v3h9l6-6" /><path d="m22 12-4-4" /><path d="M8 16l-2-2" />'
   ),
+  comment: createLucideIcon(
+    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h8" /><path d="M8 7h6" />'
+  ),
   pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
   eraser: createLucideIcon(
     '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
   ),
   undo: createLucideIcon('<path d="M9 14 4 9l5-5" /><path d="M4 9h9a7 7 0 1 1 0 14h-1" />'),
   redo: createLucideIcon('<path d="m15 14 5-5-5-5" /><path d="M20 9h-9a7 7 0 1 0 0 14h1" />'),
-  menu: createLucideIcon('<path d="M4 12h16" /><path d="M4 6h16" /><path d="M4 18h16" />')
+  menu: createLucideIcon('<path d="M4 12h16" /><path d="M4 6h16" /><path d="M4 18h16" />'),
+  floppy: createLucideIcon(
+    '<path d="M4 7a2 2 0 0 1 2-2h9l5 5v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M10 5v4h4" /><path d="M8 19v-6h8v6" />'
+  ),
+  close: createLucideIcon('<path d="m18 6-12 12" /><path d="m6 6 12 12" />'),
+  trash: createLucideIcon(
+    '<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />'
+  ),
+  edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
 };
 
 const state = {
@@ -50,10 +61,15 @@ const state = {
     version: 1,
     updatedAt: new Date(0).toISOString(),
     strokes: [],
-    highlights: []
+    highlights: [],
+    comments: []
   },
   history: [],
   historyIndex: 0,
+  openCommentId: null,
+  commentComposer: null,
+  selectionSnapshot: null,
+  selectionAction: null,
   saveInFlight: false,
   saveQueued: false
 };
@@ -91,6 +107,7 @@ app.innerHTML = `
       <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
       <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
     </div>
+    <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
     <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
     <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
     <div class="color-group">
@@ -136,6 +153,7 @@ const zoomPresetEl = document.querySelector('#zoom-preset');
 const modeToggleEl = document.querySelector('#mode-toggle');
 const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
+const commentButtonEl = document.querySelector('#comment-button');
 const menuButtonEl = document.querySelector('#menu-button');
 const menuPanelEl = document.querySelector('#menu-panel');
 const colorPaletteEl = document.querySelector('#color-palette');
@@ -187,11 +205,178 @@ function renderHighlights(highlights) {
   }
 }
 
+function renderComments(comments) {
+  for (const pageEntry of state.pageEntries) {
+    pageEntry.commentLayer.replaceChildren();
+
+    for (const comment of comments) {
+      if (comment.page !== pageEntry.pageNumber || !comment.rects.length) {
+        continue;
+      }
+
+      const anchor = comment.rects[0];
+      const scaleX = pageEntry.width / Math.max(comment.viewportWidth || pageEntry.width, 1);
+      const scaleY = pageEntry.height / Math.max(comment.viewportHeight || pageEntry.height, 1);
+      for (const rect of comment.rects) {
+        const highlight = document.createElement('div');
+        highlight.className = 'highlight-box comment-highlight-box';
+        highlight.style.left = `${rect.x * scaleX}px`;
+        highlight.style.top = `${rect.y * scaleY}px`;
+        highlight.style.width = `${rect.width * scaleX}px`;
+        highlight.style.height = `${rect.height * scaleY}px`;
+        highlight.style.backgroundColor = comment.color;
+        highlight.style.opacity = '0.2';
+        pageEntry.commentLayer.append(highlight);
+      }
+
+      const markerSize = 13;
+      const markerLeft = Math.min(
+        pageEntry.width - markerSize - 2,
+        Math.max(2, (anchor.x + anchor.width) * scaleX + 2)
+      );
+      const markerTop = Math.min(
+        pageEntry.height - markerSize - 2,
+        anchor.y * scaleY + anchor.height * scaleY + 3
+      );
+
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = 'comment-marker';
+      marker.style.left = `${markerLeft}px`;
+      marker.style.top = `${markerTop}px`;
+      marker.style.borderColor = comment.color;
+      marker.style.color = comment.color;
+      marker.innerHTML = icons.comment;
+      marker.title = 'Open comment';
+      marker.addEventListener('click', (event) => {
+        event.stopPropagation();
+        state.openCommentId = state.openCommentId === comment.id ? null : comment.id;
+        renderComments(state.sessionAnnotations.comments);
+      });
+      pageEntry.commentLayer.append(marker);
+
+      if (state.openCommentId === comment.id) {
+        const popup = document.createElement('div');
+        popup.className = 'comment-popup';
+        popup.style.left = `${Math.min(pageEntry.width - 132, Math.max(2, markerLeft + 8))}px`;
+        popup.style.top = `${Math.min(pageEntry.height - 72, markerTop + 2)}px`;
+        popup.style.borderColor = comment.color;
+        popup.innerHTML = `
+          <div class="comment-popup-text"></div>
+          <div class="comment-popup-actions">
+            <button type="button" class="comment-edit" aria-label="Edit comment" title="Edit">${icons.edit}</button>
+            <button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>
+          </div>
+        `;
+        popup.querySelector('.comment-popup-text').textContent = comment.text;
+        popup.querySelector('.comment-edit').addEventListener('click', () => {
+          state.commentComposer = {
+            id: comment.id,
+            page: comment.page,
+            viewportWidth: comment.viewportWidth,
+            viewportHeight: comment.viewportHeight,
+            rects: structuredClone(comment.rects),
+            color: comment.color,
+            text: comment.text
+          };
+          renderComments(state.sessionAnnotations.comments);
+        });
+        popup.querySelector('.comment-delete').addEventListener('click', () => {
+          state.openCommentId = null;
+          applySessionAnnotations({
+            ...state.sessionAnnotations,
+            comments: state.sessionAnnotations.comments.filter((candidate) => candidate.id !== comment.id)
+          });
+        });
+        pageEntry.commentLayer.append(popup);
+      }
+    }
+
+    if (state.commentComposer?.page === pageEntry.pageNumber && state.commentComposer.rects.length) {
+      const anchor = state.commentComposer.rects[0];
+      const scaleX = pageEntry.width / Math.max(state.commentComposer.viewportWidth || pageEntry.width, 1);
+      const scaleY = pageEntry.height / Math.max(state.commentComposer.viewportHeight || pageEntry.height, 1);
+      const composer = document.createElement('div');
+      composer.className = 'comment-composer';
+      composer.style.left = `${Math.min(pageEntry.width - 220, Math.max(2, anchor.x * scaleX))}px`;
+      composer.style.top = `${Math.min(
+        pageEntry.height - 110,
+        anchor.y * scaleY + anchor.height * scaleY + 3
+      )}px`;
+      composer.innerHTML = `
+        <div class="comment-editor-wrap">
+          <textarea class="comment-input" placeholder="Add a comment..."></textarea>
+          <div class="comment-actions">
+            <button type="button" class="comment-save" aria-label="Save comment" title="Save">${icons.floppy}</button>
+            <button type="button" class="comment-cancel" aria-label="Close" title="Close">${icons.close}</button>
+            ${state.commentComposer.id ? `<button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>` : ''}
+          </div>
+        </div>
+      `;
+
+      const input = composer.querySelector('.comment-input');
+      const saveButton = composer.querySelector('.comment-save');
+      const cancelButton = composer.querySelector('.comment-cancel');
+      const deleteButton = composer.querySelector('.comment-delete');
+      input.value = state.commentComposer.text;
+      input.addEventListener('input', () => {
+        state.commentComposer.text = input.value;
+      });
+      saveButton.addEventListener('click', () => {
+        submitCommentComposer();
+      });
+      cancelButton.addEventListener('click', () => {
+        cancelCommentComposer();
+      });
+      deleteButton?.addEventListener('click', () => {
+        deleteCommentFromComposer();
+      });
+      pageEntry.commentLayer.append(composer);
+      window.setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }, 0);
+    }
+  }
+}
+
+function renderSelectionAction() {
+  document.querySelectorAll('.selection-action').forEach((node) => node.remove());
+
+  if (!state.selectionAction) {
+    return;
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'selection-action';
+  actions.style.left = `${state.selectionAction.left}px`;
+  actions.style.top = `${state.selectionAction.top}px`;
+  actions.innerHTML = `
+    <button type="button" class="selection-action-button" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
+    <button type="button" class="selection-action-button" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
+  `;
+  actions.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+  });
+  const [highlightButton, commentButton] = actions.querySelectorAll('.selection-action-button');
+  highlightButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    addHighlightFromSelection(true);
+  });
+  commentButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    addCommentFromSelection();
+  });
+  workspaceEl.append(actions);
+}
+
 function applySessionAnnotations(annotations, options = {}) {
   const nextAnnotations = cloneAnnotations(annotations);
   state.sessionAnnotations = nextAnnotations;
   drawingLayer?.load(nextAnnotations.strokes);
   renderHighlights(nextAnnotations.highlights);
+  renderComments(nextAnnotations.comments);
+  renderSelectionAction();
 
   if (!options.skipHistory) {
     state.history = state.history.slice(0, state.historyIndex + 1);
@@ -276,6 +461,7 @@ async function rerenderPages() {
   });
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
+  renderComments(state.sessionAnnotations.comments);
   updatePageIndicator();
   updateZoomPresetIndicator();
   updateInteractionMode();
@@ -394,24 +580,61 @@ function findPageEntryFromNode(node) {
   return state.pageEntries.find((pageEntry) => pageEntry.textLayer === textLayer) ?? null;
 }
 
-function addHighlightFromSelection() {
-  if (state.mode !== 'highlight') {
+function addHighlightFromSelection(force = false) {
+  if (!force && state.mode !== 'highlight') {
     return;
   }
 
+  const snapshot = state.selectionSnapshot;
+  if (!snapshot) {
+    return;
+  }
+
+  applySessionAnnotations({
+    ...state.sessionAnnotations,
+    highlights: state.sessionAnnotations.highlights.concat({
+      id: crypto.randomUUID(),
+      page: snapshot.page,
+      color: state.color,
+      viewportWidth: snapshot.viewportWidth,
+      viewportHeight: snapshot.viewportHeight,
+      rects: structuredClone(snapshot.rects)
+    })
+  });
+
+  window.getSelection()?.removeAllRanges();
+  state.selectionSnapshot = null;
+  state.selectionAction = null;
+  commentButtonEl.disabled = true;
+  renderSelectionAction();
+}
+
+function snapshotSelection() {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    commentButtonEl.disabled = true;
+    renderSelectionAction();
     return;
   }
 
   const range = selection.getRangeAt(0);
   const pageEntry = findPageEntryFromNode(range.commonAncestorContainer);
   if (!pageEntry) {
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    commentButtonEl.disabled = true;
+    renderSelectionAction();
     return;
   }
 
   const pageRect = pageEntry.textLayer.getBoundingClientRect();
   if (!pageRect.width || !pageRect.height) {
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    commentButtonEl.disabled = true;
+    renderSelectionAction();
     return;
   }
 
@@ -427,22 +650,104 @@ function addHighlightFromSelection() {
     }));
 
   if (!rects.length) {
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    commentButtonEl.disabled = true;
+    renderSelectionAction();
     return;
   }
 
+  state.selectionSnapshot = {
+    page: pageEntry.pageNumber,
+    viewportWidth: pageEntry.width,
+    viewportHeight: pageEntry.height,
+    rects,
+    text: selection.toString().trim()
+  };
+  const firstRect = rects[0];
+  state.selectionAction = {
+    left: Math.min(
+      pageEntry.pageShell.offsetLeft + firstRect.x,
+      workspaceEl.scrollLeft + workspaceEl.clientWidth - 88
+    ),
+    top: Math.min(
+      workspaceEl.scrollTop + workspaceEl.clientHeight - 26,
+      pageEntry.pageShell.offsetTop + firstRect.y + firstRect.height + 3
+    )
+  };
+  commentButtonEl.disabled = false;
+  renderSelectionAction();
+}
+
+function addCommentFromSelection() {
+  if (!state.selectionSnapshot) {
+    return;
+  }
+
+  state.commentComposer = {
+    id: null,
+    page: state.selectionSnapshot.page,
+    viewportWidth: state.selectionSnapshot.viewportWidth,
+    viewportHeight: state.selectionSnapshot.viewportHeight,
+    rects: structuredClone(state.selectionSnapshot.rects),
+    color: state.color,
+    text: ''
+  };
+  state.selectionAction = null;
+  renderComments(state.sessionAnnotations.comments);
+  renderSelectionAction();
+}
+
+function cancelCommentComposer() {
+  state.commentComposer = null;
+  renderComments(state.sessionAnnotations.comments);
+}
+
+function deleteCommentFromComposer() {
+  if (!state.commentComposer?.id) {
+    cancelCommentComposer();
+    return;
+  }
+
+  const commentId = state.commentComposer.id;
+  state.commentComposer = null;
+  state.openCommentId = null;
   applySessionAnnotations({
     ...state.sessionAnnotations,
-    highlights: state.sessionAnnotations.highlights.concat({
-      id: crypto.randomUUID(),
-      page: pageEntry.pageNumber,
-      color: state.color,
-      viewportWidth: pageEntry.width,
-      viewportHeight: pageEntry.height,
-      rects
-    })
+    comments: state.sessionAnnotations.comments.filter((comment) => comment.id !== commentId)
   });
+}
 
-  selection.removeAllRanges();
+function submitCommentComposer() {
+  if (!state.commentComposer || !state.commentComposer.text.trim()) {
+    return;
+  }
+
+  const nextComment = {
+    id: state.commentComposer.id ?? crypto.randomUUID(),
+    page: state.commentComposer.page,
+    viewportWidth: state.commentComposer.viewportWidth,
+    viewportHeight: state.commentComposer.viewportHeight,
+    rects: structuredClone(state.commentComposer.rects),
+    color: state.commentComposer.color,
+    text: state.commentComposer.text.trim()
+  };
+
+  state.openCommentId = nextComment.id;
+  state.commentComposer = null;
+  applySessionAnnotations({
+    ...state.sessionAnnotations,
+    comments: state.sessionAnnotations.comments.some((comment) => comment.id === nextComment.id)
+      ? state.sessionAnnotations.comments.map((comment) =>
+          comment.id === nextComment.id ? nextComment : comment
+        )
+      : state.sessionAnnotations.comments.concat(nextComment)
+  });
+  window.getSelection()?.removeAllRanges();
+  state.selectionSnapshot = null;
+  state.selectionAction = null;
+  commentButtonEl.disabled = true;
+  renderSelectionAction();
 }
 
 function undo() {
@@ -699,6 +1004,14 @@ redoButtonEl.addEventListener('click', () => {
   redo();
 });
 
+commentButtonEl.addEventListener('mousedown', (event) => {
+  event.preventDefault();
+});
+
+commentButtonEl.addEventListener('click', () => {
+  addCommentFromSelection();
+});
+
 menuButtonEl.addEventListener('click', () => {
   setMenuOpen(!state.menuOpen);
 });
@@ -717,6 +1030,16 @@ strokeColorEl.addEventListener('input', () => {
 });
 
 window.addEventListener('click', (event) => {
+  if (!event.target.closest('.selection-action')) {
+    state.selectionAction = null;
+    renderSelectionAction();
+  }
+
+  if (!event.target.closest('.comment-marker, .comment-popup, .comment-composer')) {
+    state.openCommentId = null;
+    renderComments(state.sessionAnnotations.comments);
+  }
+
   if (menuPanelEl.hidden) {
     return;
   }
@@ -730,8 +1053,13 @@ window.addEventListener('click', (event) => {
 
 window.addEventListener('mouseup', () => {
   window.setTimeout(() => {
+    snapshotSelection();
     addHighlightFromSelection();
   }, 0);
+});
+
+document.addEventListener('selectionchange', () => {
+  snapshotSelection();
 });
 
 workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, { passive: true });
@@ -751,6 +1079,11 @@ window.addEventListener('message', async (event) => {
     state.sessionAnnotations = structuredClone(message.payload.annotations);
     state.history = [structuredClone(state.sessionAnnotations)];
     state.historyIndex = 0;
+    state.openCommentId = null;
+    state.commentComposer = null;
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    commentButtonEl.disabled = true;
 
     try {
       await rerenderPages();

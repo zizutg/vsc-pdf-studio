@@ -4,6 +4,7 @@
   "description": "Annotate PDF files in VS Code with automatic sidecar saves.",
   "version": "0.0.1",
   "publisher": "zee",
+  "icon": "media/icon.png",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"

@@ -79,6 +79,9 @@ body {
 .mode-button {
   border: 1px solid var(--border);
   background: var(--panel-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .zoom-controls button,
@@ -98,7 +101,6 @@ body {
 .mode-button {
   width: 34px;
   padding: 0;
-  font-size: 16px;
 }
 
 #menu-button {
@@ -109,6 +111,9 @@ body {
   background: var(--panel-2);
   color: var(--text);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #menu-button.is-active {
@@ -156,6 +161,19 @@ body {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.toolbar-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  pointer-events: none;
+}
+
+#menu-button .toolbar-icon {
+  width: 17px;
+  height: 17px;
+  flex-basis: 17px;
+}
+
 #undo-button:disabled,
 #redo-button:disabled {
   opacity: 0.45;
@@ -201,7 +219,15 @@ body {
 }
 
 #page-input {
-  width: 72px;
+  width: 36px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+#page-input::-webkit-outer-spin-button,
+#page-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .workspace {

@@ -5,6 +5,29 @@ import { renderPdf } from './pdfRenderer.js';
 const vscode = acquireVsCodeApi();
 const app = document.querySelector('#app');
 
+function createLucideIcon(paths, attrs = '') {
+  return `
+    <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" ${attrs}>
+      ${paths}
+    </svg>
+  `;
+}
+
+const icons = {
+  minus: createLucideIcon('<path d="M5 12h14" />'),
+  plus: createLucideIcon('<path d="M12 5v14" /><path d="M5 12h14" />'),
+  pen: createLucideIcon(
+    '<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />'
+  ),
+  pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
+  eraser: createLucideIcon(
+    '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
+  ),
+  undo: createLucideIcon('<path d="M9 14 4 9l5-5" /><path d="M4 9h9a7 7 0 1 1 0 14h-1" />'),
+  redo: createLucideIcon('<path d="m15 14 5-5-5-5" /><path d="M20 9h-9a7 7 0 1 0 0 14h1" />'),
+  menu: createLucideIcon('<path d="M4 12h16" /><path d="M4 6h16" /><path d="M4 18h16" />')
+};
+
 const state = {
   fileName: 'PDF',
   pdfBase64: '',
@@ -15,7 +38,7 @@ const state = {
   currentPage: 1,
   totalPages: 0,
   color: '#ef4444',
-  mode: 'annotate',
+  mode: 'select',
   menuOpen: false,
   pageJumpInProgress: false,
   zoomContext: null,
@@ -35,7 +58,7 @@ app.innerHTML = `
       <span class="toolbar-label" id="page-total">/ 1</span>
     </label>
     <div class="zoom-controls">
-      <button type="button" id="zoom-out" aria-label="Zoom out">-</button>
+      <button type="button" id="zoom-out" aria-label="Zoom out">${icons.minus}</button>
       <select id="zoom-preset">
         <option value="automatic">Automatic Zoom</option>
         <option value="actual-size">Actual Size</option>
@@ -52,15 +75,15 @@ app.innerHTML = `
         <option value="10">1000%</option>
         <option value="custom">Custom</option>
       </select>
-      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom-in" aria-label="Zoom in">${icons.plus}</button>
     </div>
     <div class="mode-toggle" id="mode-toggle">
-      <button type="button" class="mode-button is-active" data-mode="annotate" aria-label="Annotate" title="Annotate">✎</button>
-      <button type="button" class="mode-button" data-mode="select" aria-label="Select" title="Select">↖</button>
-      <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">⌫</button>
+      <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
+      <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
+      <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
     </div>
-    <button type="button" id="undo-button" aria-label="Undo" title="Undo">↩</button>
-    <button type="button" id="redo-button" aria-label="Redo" title="Redo">↪</button>
+    <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
+    <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
     <div class="color-group">
       <div class="color-palette" id="color-palette">
         <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
@@ -70,7 +93,7 @@ app.innerHTML = `
       </div>
     </div>
     <div class="menu-wrap">
-      <button type="button" id="menu-button" aria-label="More tools" title="More tools">☰</button>
+      <button type="button" id="menu-button" aria-label="More tools" title="More tools">${icons.menu}</button>
       <div class="menu-panel" id="menu-panel" hidden>
         <label>
           Custom Color

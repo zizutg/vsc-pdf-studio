@@ -115,6 +115,7 @@ const messageBoxEl = document.querySelector('#message-box');
 let drawingLayer = null;
 let zoomRerenderTimer = null;
 let zoomRenderRequestId = 0;
+let resizeRerenderTimer = null;
 
 const autoSaver = createAutoSaver(() => {
   requestSave();
@@ -351,6 +352,27 @@ function scheduleZoomRerender() {
   }, 140);
 }
 
+function scheduleResponsiveRerender() {
+  if (resizeRerenderTimer) {
+    window.clearTimeout(resizeRerenderTimer);
+  }
+
+  resizeRerenderTimer = window.setTimeout(() => {
+    resizeRerenderTimer = null;
+
+    if (!state.pdfBase64) {
+      return;
+    }
+
+    if (!['automatic', 'page-fit', 'page-width'].includes(state.zoomMode)) {
+      return;
+    }
+
+    state.zoomContext = createZoomContext();
+    void rerenderPages();
+  }, 120);
+}
+
 function createZoomContext(anchorClientX, anchorClientY) {
   const workspaceRect = workspaceEl.getBoundingClientRect();
   const clientX = anchorClientX ?? workspaceRect.left + workspaceRect.width / 2;
@@ -570,6 +592,7 @@ window.addEventListener('click', (event) => {
 
 workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, { passive: true });
 workspaceEl.addEventListener('wheel', applyWheelZoom, { passive: false });
+window.addEventListener('resize', scheduleResponsiveRerender, { passive: true });
 window.addEventListener('wheel', applyWheelZoom, { passive: false, capture: true });
 window.addEventListener('gesturestart', applyGestureZoomStart, { passive: false, capture: true });
 window.addEventListener('gesturechange', applyGestureZoomChange, { passive: false, capture: true });

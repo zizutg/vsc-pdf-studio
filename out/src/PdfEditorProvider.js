@@ -130,6 +130,7 @@ class PdfEditorProvider {
             `  <link rel="stylesheet" href="${toWebviewUri(['media', 'styles.css'])}" />`,
             `  <script nonce="${nonce}" src="${toWebviewUri(['media', 'libs', 'pdf.worker.min.js'])}"></script>`,
             `  <script nonce="${nonce}" src="${toWebviewUri(['media', 'libs', 'pdf.min.js'])}"></script>`,
+            `  <script nonce="${nonce}" src="${toWebviewUri(['media', 'libs', 'pdf_viewer.js'])}"></script>`,
             '</head>',
             '<body>',
             '  <div id="app"></div>',

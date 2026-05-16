@@ -11,6 +11,7 @@ const state = {
   pageEntries: [],
   zoomMode: 'automatic',
   zoom: 1.25,
+  renderedZoom: 1.25,
   currentPage: 1,
   totalPages: 0,
   color: '#ef4444',
@@ -169,6 +170,7 @@ async function rerenderPages() {
   const { pages, resolvedScale } = await renderPdf(state.pdfBase64, pagesEl, getZoomConfig(), workspaceSize);
   state.pageEntries = pages;
   state.zoom = resolvedScale;
+  state.renderedZoom = resolvedScale;
   state.totalPages = state.pageEntries.length;
   state.currentPage = Math.min(state.currentPage, state.totalPages || 1);
 
@@ -249,15 +251,16 @@ function jumpToPage(pageNumber) {
   state.pageJumpInProgress = true;
   state.currentPage = pageNumber;
   updatePageIndicator();
-  workspaceEl.scrollTo({
-    top: getPageScrollTop(targetPage),
-    behavior: 'auto'
+  targetPage.pageShell.scrollIntoView({
+    behavior: 'auto',
+    block: 'start',
+    inline: 'nearest'
   });
 
   window.setTimeout(() => {
     state.pageJumpInProgress = false;
     updateCurrentPageFromScroll();
-  }, 50);
+  }, 150);
 }
 
 function setMode(mode) {
@@ -332,18 +335,20 @@ function scheduleZoomRerender() {
   zoomRerenderTimer = window.setTimeout(() => {
     zoomRerenderTimer = null;
     void rerenderPages();
-  }, 80);
+  }, 140);
 }
 
 function createZoomContext(anchorClientX, anchorClientY) {
   const workspaceRect = workspaceEl.getBoundingClientRect();
   const clientX = anchorClientX ?? workspaceRect.left + workspaceRect.width / 2;
   const clientY = anchorClientY ?? workspaceRect.top + workspaceRect.height / 2;
+  const anchorX = workspaceEl.scrollLeft + (clientX - workspaceRect.left);
+  const anchorY = workspaceEl.scrollTop + (clientY - workspaceRect.top);
 
   return {
-    previousZoom: state.zoom,
-    anchorX: workspaceEl.scrollLeft + (clientX - workspaceRect.left),
-    anchorY: workspaceEl.scrollTop + (clientY - workspaceRect.top),
+    previousZoom: state.renderedZoom,
+    anchorX,
+    anchorY,
     offsetX: clientX - workspaceRect.left,
     offsetY: clientY - workspaceRect.top
   };
@@ -359,6 +364,30 @@ function restoreZoomViewport() {
   workspaceEl.scrollLeft = zoomContext.anchorX * ratio - zoomContext.offsetX;
   workspaceEl.scrollTop = zoomContext.anchorY * ratio - zoomContext.offsetY;
   state.zoomContext = null;
+  clearVisualZoomPreview();
+}
+
+function ensureZoomContext(anchorClientX, anchorClientY) {
+  if (!state.zoomContext) {
+    state.zoomContext = createZoomContext(anchorClientX, anchorClientY);
+  }
+}
+
+function applyVisualZoomPreview() {
+  if (!state.zoomContext) {
+    return;
+  }
+
+  const ratio = state.zoom / state.zoomContext.previousZoom;
+  pagesEl.style.transformOrigin = `${state.zoomContext.anchorX}px ${state.zoomContext.anchorY}px`;
+  pagesEl.style.transform = `scale(${ratio})`;
+  pagesEl.classList.add('is-zooming');
+}
+
+function clearVisualZoomPreview() {
+  pagesEl.style.transform = '';
+  pagesEl.style.transformOrigin = '';
+  pagesEl.classList.remove('is-zooming');
 }
 
 function applyWheelZoom(event) {
@@ -375,8 +404,9 @@ function applyWheelZoom(event) {
   }
 
   state.zoomMode = 'custom';
-  state.zoomContext = createZoomContext(event.clientX, event.clientY);
+  ensureZoomContext(event.clientX, event.clientY);
   state.zoom = nextZoom;
+  applyVisualZoomPreview();
   scheduleZoomRerender();
 }
 
@@ -388,6 +418,7 @@ function applyGestureZoomStart(event) {
   event.preventDefault();
   state.gestureZoomBase = state.zoom;
   state.zoomContext = createZoomContext(event.clientX, event.clientY);
+  applyVisualZoomPreview();
 }
 
 function applyGestureZoomChange(event) {
@@ -398,6 +429,7 @@ function applyGestureZoomChange(event) {
   event.preventDefault();
   state.zoomMode = 'custom';
   state.zoom = Math.max(0.5, Math.min(10, Number((state.gestureZoomBase * event.scale).toFixed(2))));
+  applyVisualZoomPreview();
   scheduleZoomRerender();
 }
 
@@ -425,6 +457,7 @@ function applyZoomPreset(value) {
   state.zoomMode = 'custom';
   state.zoom = Math.max(0.5, Math.min(10, numericZoom));
   state.zoomContext = createZoomContext();
+  applyVisualZoomPreview();
   scheduleZoomRerender();
 }
 
@@ -443,7 +476,7 @@ function getZoomConfig() {
 }
 
 function getPageScrollTop(pageEntry) {
-  return pagesEl.offsetTop + pageEntry.pageShell.offsetTop;
+  return pageEntry.pageShell.offsetTop;
 }
 
 zoomInEl.addEventListener('click', () => {

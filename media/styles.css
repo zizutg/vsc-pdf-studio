@@ -212,6 +212,12 @@ body {
 #pages {
   display: grid;
   gap: 24px;
+  transform-origin: top left;
+  will-change: transform;
+}
+
+#pages.is-zooming {
+  pointer-events: none;
 }
 
 .page-shell {
@@ -225,7 +231,6 @@ body {
 .text-layer,
 .drawing-canvas {
   display: block;
-  max-width: 100%;
 }
 
 .text-layer,
@@ -241,8 +246,8 @@ body {
 
 .text-layer {
   overflow: hidden;
-  line-height: 1;
   opacity: 1;
+  line-height: 1;
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
@@ -255,10 +260,10 @@ body {
   position: absolute;
   white-space: pre;
   color: transparent;
-  transform-origin: 0 0;
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
+  transform-origin: 0 0;
 }
 
 .text-layer ::selection {

@@ -26,12 +26,14 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     const unscaledViewport = page.getViewport({ scale: 1 });
     const pageShell = document.createElement('div');
     const pdfCanvas = document.createElement('canvas');
+    const highlightLayer = document.createElement('div');
     const textLayerBuilder = new TextLayerBuilder({});
     const textLayer = textLayerBuilder.div;
     const drawingCanvas = document.createElement('canvas');
 
     pageShell.className = 'page-shell';
     pdfCanvas.className = 'pdf-canvas';
+    highlightLayer.className = 'highlight-layer';
     textLayer.classList.add('text-layer');
     drawingCanvas.className = 'drawing-canvas';
 
@@ -50,7 +52,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     textLayer.style.width = `${unscaledViewport.width}px`;
     textLayer.style.height = `${unscaledViewport.height}px`;
 
-    pageShell.append(pdfCanvas, textLayer, drawingCanvas);
+    pageShell.append(pdfCanvas, highlightLayer, textLayer, drawingCanvas);
     fragment.append(pageShell);
 
     await page.render({
@@ -66,6 +68,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       pageNumber,
       pageShell,
       pdfCanvas,
+      highlightLayer,
       textLayer,
       drawingCanvas,
       width: viewport.width,

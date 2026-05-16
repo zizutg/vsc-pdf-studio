@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { PDFDocument, rgb } from 'pdf-lib';
 import type {
   AnnotationDocument,
+  AnnotationHighlight,
   AnnotationPoint
 } from '../models/annotation';
 
@@ -46,6 +47,29 @@ export class SaveManager {
           thickness: lineWidth,
           color,
           opacity: 1
+        });
+      }
+    }
+
+    for (const highlight of annotations.highlights) {
+      const page = pages[highlight.page - 1];
+      if (!page || !highlight.rects.length) {
+        continue;
+      }
+
+      const scaleX = page.getWidth() / Math.max(highlight.viewportWidth, 1);
+      const scaleY = page.getHeight() / Math.max(highlight.viewportHeight, 1);
+      const color = toRgb(highlight.color);
+
+      for (const rect of highlight.rects) {
+        page.drawRectangle({
+          x: rect.x * scaleX,
+          y: page.getHeight() - (rect.y + rect.height) * scaleY,
+          width: rect.width * scaleX,
+          height: rect.height * scaleY,
+          color,
+          opacity: 0.28,
+          borderWidth: 0
         });
       }
     }

@@ -72,6 +72,26 @@ class SaveManager {
                 });
             }
         }
+        for (const highlight of annotations.highlights) {
+            const page = pages[highlight.page - 1];
+            if (!page || !highlight.rects.length) {
+                continue;
+            }
+            const scaleX = page.getWidth() / Math.max(highlight.viewportWidth, 1);
+            const scaleY = page.getHeight() / Math.max(highlight.viewportHeight, 1);
+            const color = toRgb(highlight.color);
+            for (const rect of highlight.rects) {
+                page.drawRectangle({
+                    x: rect.x * scaleX,
+                    y: page.getHeight() - (rect.y + rect.height) * scaleY,
+                    width: rect.width * scaleX,
+                    height: rect.height * scaleY,
+                    color,
+                    opacity: 0.28,
+                    borderWidth: 0
+                });
+            }
+        }
         const output = await pdfDocument.save();
         await fs.writeFile(pdfUri.fsPath, output);
     }

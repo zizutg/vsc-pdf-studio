@@ -19,6 +19,9 @@ const icons = {
   pen: createLucideIcon(
     '<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />'
   ),
+  highlighter: createLucideIcon(
+    '<path d="m9 11-6 6v3h9l6-6" /><path d="m22 12-4-4" /><path d="M8 16l-2-2" />'
+  ),
   pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
   eraser: createLucideIcon(
     '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
@@ -43,8 +46,13 @@ const state = {
   pageJumpInProgress: false,
   zoomContext: null,
   gestureZoomBase: null,
-  sessionStrokes: [],
-  history: [[]],
+  sessionAnnotations: {
+    version: 1,
+    updatedAt: new Date(0).toISOString(),
+    strokes: [],
+    highlights: []
+  },
+  history: [],
   historyIndex: 0,
   saveInFlight: false,
   saveQueued: false
@@ -79,6 +87,7 @@ app.innerHTML = `
     </div>
     <div class="mode-toggle" id="mode-toggle">
       <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
+      <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
       <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
       <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
     </div>
@@ -87,6 +96,7 @@ app.innerHTML = `
     <div class="color-group">
       <div class="color-palette" id="color-palette">
         <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
+        <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
         <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
         <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
         <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
@@ -144,18 +154,48 @@ const autoSaver = createAutoSaver(() => {
   requestSave();
 });
 
-function cloneStrokes(strokes) {
-  return structuredClone(strokes);
+state.history = [structuredClone(state.sessionAnnotations)];
+
+function cloneAnnotations(annotations) {
+  return structuredClone(annotations);
 }
 
-function applySessionStrokes(strokes, options = {}) {
-  const nextStrokes = cloneStrokes(strokes);
-  state.sessionStrokes = nextStrokes;
-  drawingLayer?.load(nextStrokes);
+function renderHighlights(highlights) {
+  for (const pageEntry of state.pageEntries) {
+    pageEntry.highlightLayer.replaceChildren();
+
+    for (const highlight of highlights) {
+      if (highlight.page !== pageEntry.pageNumber) {
+        continue;
+      }
+
+      const scaleX = pageEntry.width / Math.max(highlight.viewportWidth || pageEntry.width, 1);
+      const scaleY = pageEntry.height / Math.max(highlight.viewportHeight || pageEntry.height, 1);
+
+      for (const rect of highlight.rects) {
+        const box = document.createElement('div');
+        box.className = 'highlight-box';
+        box.style.left = `${rect.x * scaleX}px`;
+        box.style.top = `${rect.y * scaleY}px`;
+        box.style.width = `${rect.width * scaleX}px`;
+        box.style.height = `${rect.height * scaleY}px`;
+        box.style.backgroundColor = highlight.color;
+        box.style.opacity = '0.28';
+        pageEntry.highlightLayer.append(box);
+      }
+    }
+  }
+}
+
+function applySessionAnnotations(annotations, options = {}) {
+  const nextAnnotations = cloneAnnotations(annotations);
+  state.sessionAnnotations = nextAnnotations;
+  drawingLayer?.load(nextAnnotations.strokes);
+  renderHighlights(nextAnnotations.highlights);
 
   if (!options.skipHistory) {
     state.history = state.history.slice(0, state.historyIndex + 1);
-    state.history.push(nextStrokes);
+    state.history.push(nextAnnotations);
     state.historyIndex = state.history.length - 1;
   }
 
@@ -179,9 +219,8 @@ function requestSave() {
     type: 'annotationsChanged',
     payload: {
       annotations: {
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        strokes: cloneStrokes(state.sessionStrokes)
+        ...cloneAnnotations(state.sessionAnnotations),
+        updatedAt: new Date().toISOString()
       }
     }
   });
@@ -214,15 +253,29 @@ async function rerenderPages() {
   drawingLayer = createDrawingLayer(state.pageEntries, {
     getColor: () => state.color,
     getWidth: () => Number(strokeWidthEl.value),
+    getHighlights: () => state.sessionAnnotations.highlights,
     getMode: () => state.mode,
     onChange(allStrokes) {
-      applySessionStrokes(allStrokes);
+      applySessionAnnotations({
+        ...state.sessionAnnotations,
+        strokes: allStrokes
+      });
     },
     onErase(_erasedStroke, remainingStrokes) {
-      applySessionStrokes(remainingStrokes);
+      applySessionAnnotations({
+        ...state.sessionAnnotations,
+        strokes: remainingStrokes
+      });
+    },
+    onEraseHighlight(_erasedHighlight, remainingHighlights) {
+      applySessionAnnotations({
+        ...state.sessionAnnotations,
+        highlights: remainingHighlights
+      });
     }
   });
-  drawingLayer.load(state.sessionStrokes);
+  drawingLayer.load(state.sessionAnnotations.strokes);
+  renderHighlights(state.sessionAnnotations.highlights);
   updatePageIndicator();
   updateZoomPresetIndicator();
   updateInteractionMode();
@@ -311,11 +364,12 @@ function updateInteractionMode() {
   }
 
   for (const pageEntry of state.pageEntries) {
-    pageEntry.drawingCanvas.style.pointerEvents = state.mode === 'select' ? 'none' : 'auto';
+    const textInteractionEnabled = state.mode === 'select' || state.mode === 'highlight';
+    pageEntry.drawingCanvas.style.pointerEvents = textInteractionEnabled ? 'none' : 'auto';
     pageEntry.drawingCanvas.style.cursor =
-      state.mode === 'erase' ? 'not-allowed' : state.mode === 'select' ? 'default' : 'crosshair';
-    pageEntry.textLayer.style.userSelect = state.mode === 'select' ? 'text' : 'none';
-    pageEntry.textLayer.style.pointerEvents = state.mode === 'select' ? 'auto' : 'none';
+      state.mode === 'erase' ? 'not-allowed' : textInteractionEnabled ? 'text' : 'crosshair';
+    pageEntry.textLayer.style.userSelect = textInteractionEnabled ? 'text' : 'none';
+    pageEntry.textLayer.style.pointerEvents = textInteractionEnabled ? 'auto' : 'none';
   }
 }
 
@@ -330,13 +384,74 @@ function setMenuOpen(nextOpen) {
   menuButtonEl.classList.toggle('is-active', nextOpen);
 }
 
+function findPageEntryFromNode(node) {
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  const textLayer = element?.closest('.text-layer, .textLayer');
+  if (!textLayer) {
+    return null;
+  }
+
+  return state.pageEntries.find((pageEntry) => pageEntry.textLayer === textLayer) ?? null;
+}
+
+function addHighlightFromSelection() {
+  if (state.mode !== 'highlight') {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return;
+  }
+
+  const range = selection.getRangeAt(0);
+  const pageEntry = findPageEntryFromNode(range.commonAncestorContainer);
+  if (!pageEntry) {
+    return;
+  }
+
+  const pageRect = pageEntry.textLayer.getBoundingClientRect();
+  if (!pageRect.width || !pageRect.height) {
+    return;
+  }
+
+  const scaleX = pageEntry.width / pageRect.width;
+  const scaleY = pageEntry.height / pageRect.height;
+  const rects = Array.from(range.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      x: (rect.left - pageRect.left) * scaleX,
+      y: (rect.top - pageRect.top) * scaleY,
+      width: rect.width * scaleX,
+      height: rect.height * scaleY
+    }));
+
+  if (!rects.length) {
+    return;
+  }
+
+  applySessionAnnotations({
+    ...state.sessionAnnotations,
+    highlights: state.sessionAnnotations.highlights.concat({
+      id: crypto.randomUUID(),
+      page: pageEntry.pageNumber,
+      color: state.color,
+      viewportWidth: pageEntry.width,
+      viewportHeight: pageEntry.height,
+      rects
+    })
+  });
+
+  selection.removeAllRanges();
+}
+
 function undo() {
   if (state.historyIndex <= 0) {
     return;
   }
 
   state.historyIndex -= 1;
-  applySessionStrokes(state.history[state.historyIndex], {
+  applySessionAnnotations(state.history[state.historyIndex], {
     skipHistory: true
   });
 }
@@ -347,7 +462,7 @@ function redo() {
   }
 
   state.historyIndex += 1;
-  applySessionStrokes(state.history[state.historyIndex], {
+  applySessionAnnotations(state.history[state.historyIndex], {
     skipHistory: true
   });
 }
@@ -613,6 +728,12 @@ window.addEventListener('click', (event) => {
   setMenuOpen(false);
 });
 
+window.addEventListener('mouseup', () => {
+  window.setTimeout(() => {
+    addHighlightFromSelection();
+  }, 0);
+});
+
 workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, { passive: true });
 workspaceEl.addEventListener('wheel', applyWheelZoom, { passive: false });
 window.addEventListener('resize', scheduleResponsiveRerender, { passive: true });
@@ -627,6 +748,9 @@ window.addEventListener('message', async (event) => {
   if (message.type === 'init') {
     state.fileName = message.payload.fileName;
     state.pdfBase64 = message.payload.pdfBase64;
+    state.sessionAnnotations = structuredClone(message.payload.annotations);
+    state.history = [structuredClone(state.sessionAnnotations)];
+    state.historyIndex = 0;
 
     try {
       await rerenderPages();

@@ -1,3 +1,11 @@
+function pointInsideRect(point, rect, scaleX, scaleY) {
+  const left = rect.x * scaleX;
+  const top = rect.y * scaleY;
+  const right = left + rect.width * scaleX;
+  const bottom = top + rect.height * scaleY;
+  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+}
+
 function drawStroke(context, canvas, stroke) {
   if (!stroke.points.length) {
     return;
@@ -95,6 +103,25 @@ export function createDrawingLayer(pageEntries, options) {
     return bestStroke;
   }
 
+  function findHighlightAtPoint(pageNumber, point) {
+    for (const highlight of options.getHighlights?.() ?? []) {
+      if (highlight.page !== pageNumber) {
+        continue;
+      }
+
+      const scaleX = point.viewportWidth / Math.max(highlight.viewportWidth || point.viewportWidth, 1);
+      const scaleY = point.viewportHeight / Math.max(highlight.viewportHeight || point.viewportHeight, 1);
+
+      for (const rect of highlight.rects) {
+        if (pointInsideRect(point, rect, scaleX, scaleY)) {
+          return highlight;
+        }
+      }
+    }
+
+    return null;
+  }
+
   for (const pageEntry of pageEntries) {
     const canvas = pageEntry.drawingCanvas;
 
@@ -116,6 +143,15 @@ export function createDrawingLayer(pageEntries, options) {
           state.strokes = state.strokes.filter((stroke) => stroke.id !== targetStroke.id);
           options.onErase?.(structuredClone(targetStroke), structuredClone(state.strokes));
           redrawAll();
+          return;
+        }
+
+        const targetHighlight = findHighlightAtPoint(pageEntry.pageNumber, point);
+        if (targetHighlight) {
+          const remainingHighlights = (options.getHighlights?.() ?? []).filter(
+            (highlight) => highlight.id !== targetHighlight.id
+          );
+          options.onEraseHighlight?.(structuredClone(targetHighlight), structuredClone(remainingHighlights));
         }
         return;
       }

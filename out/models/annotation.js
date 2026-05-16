@@ -4,7 +4,8 @@ exports.emptyAnnotationDocument = void 0;
 const emptyAnnotationDocument = () => ({
     version: 1,
     updatedAt: new Date(0).toISOString(),
-    strokes: []
+    strokes: [],
+    highlights: []
 });
 exports.emptyAnnotationDocument = emptyAnnotationDocument;
 //# sourceMappingURL=annotation.js.map

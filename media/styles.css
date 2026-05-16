@@ -254,17 +254,30 @@ body {
 }
 
 .pdf-canvas,
+.highlight-layer,
 .text-layer,
 .textLayer,
 .drawing-canvas {
   display: block;
 }
 
+.highlight-layer,
 .text-layer,
 .textLayer,
 .drawing-canvas {
   position: absolute;
   inset: 0;
+}
+
+.highlight-layer {
+  pointer-events: none;
+}
+
+.highlight-box {
+  position: absolute;
+  border-radius: 2px;
+  pointer-events: none;
+  mix-blend-mode: multiply;
 }
 
 .drawing-canvas {

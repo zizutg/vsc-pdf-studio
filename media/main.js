@@ -178,6 +178,16 @@ function cloneAnnotations(annotations) {
   return structuredClone(annotations);
 }
 
+function normalizeSelectedText(text) {
+  return text
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function renderHighlights(highlights) {
   for (const pageEntry of state.pageEntries) {
     pageEntry.highlightLayer.replaceChildren();
@@ -214,7 +224,8 @@ function renderComments(comments) {
         continue;
       }
 
-      const anchor = comment.rects[0];
+      const firstRect = comment.rects[0];
+      const anchor = comment.rects[comment.rects.length - 1];
       const scaleX = pageEntry.width / Math.max(comment.viewportWidth || pageEntry.width, 1);
       const scaleY = pageEntry.height / Math.max(comment.viewportHeight || pageEntry.height, 1);
       for (const rect of comment.rects) {
@@ -229,14 +240,14 @@ function renderComments(comments) {
         pageEntry.commentLayer.append(highlight);
       }
 
-      const markerSize = 13;
+      const markerSize = 10;
       const markerLeft = Math.min(
         pageEntry.width - markerSize - 2,
-        Math.max(2, (anchor.x + anchor.width) * scaleX + 2)
+        Math.max(2, (anchor.x + anchor.width) * scaleX + 1)
       );
       const markerTop = Math.min(
         pageEntry.height - markerSize - 2,
-        anchor.y * scaleY + anchor.height * scaleY + 3
+        Math.max(2, anchor.y * scaleY - markerSize * 0.7)
       );
 
       const marker = document.createElement('button');
@@ -244,8 +255,7 @@ function renderComments(comments) {
       marker.className = 'comment-marker';
       marker.style.left = `${markerLeft}px`;
       marker.style.top = `${markerTop}px`;
-      marker.style.borderColor = comment.color;
-      marker.style.color = comment.color;
+      marker.style.backgroundColor = comment.color;
       marker.innerHTML = icons.comment;
       marker.title = 'Open comment';
       marker.addEventListener('click', (event) => {
@@ -259,7 +269,10 @@ function renderComments(comments) {
         const popup = document.createElement('div');
         popup.className = 'comment-popup';
         popup.style.left = `${Math.min(pageEntry.width - 132, Math.max(2, markerLeft + 8))}px`;
-        popup.style.top = `${Math.min(pageEntry.height - 72, markerTop + 2)}px`;
+        popup.style.top = `${Math.min(
+          pageEntry.height - 72,
+          Math.max(2, firstRect.y * scaleY + firstRect.height * scaleY + 4)
+        )}px`;
         popup.style.borderColor = comment.color;
         popup.innerHTML = `
           <div class="comment-popup-text"></div>
@@ -662,7 +675,7 @@ function snapshotSelection() {
     viewportWidth: pageEntry.width,
     viewportHeight: pageEntry.height,
     rects,
-    text: selection.toString().trim()
+    text: normalizeSelectedText(selection.toString())
   };
   const firstRect = rects[0];
   const lastRect = rects[rects.length - 1];
@@ -958,6 +971,14 @@ function getPageScrollTop(pageEntry) {
   return pageEntry.pageShell.offsetTop;
 }
 
+function isTextEditingTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
 zoomInEl.addEventListener('click', () => {
   void adjustZoom(0.25);
 });
@@ -1061,6 +1082,29 @@ window.addEventListener('mouseup', () => {
 
 document.addEventListener('selectionchange', () => {
   snapshotSelection();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (isTextEditingTarget(event.target) || (!event.ctrlKey && !event.metaKey) || event.altKey) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+  if (key === 'z') {
+    event.preventDefault();
+    if (event.shiftKey) {
+      redo();
+      return;
+    }
+
+    undo();
+    return;
+  }
+
+  if (key === 'y') {
+    event.preventDefault();
+    redo();
+  }
 });
 
 workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, { passive: true });

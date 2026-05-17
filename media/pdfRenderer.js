@@ -13,6 +13,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
   const pdf = await loadingTask.promise;
   const firstPage = await pdf.getPage(1);
   const baseViewport = firstPage.getViewport({ scale: 1 });
+  const outline = await buildOutline(pdf);
   const resolvedScale = resolveScale(zoomConfig, workspaceSize, {
     width: baseViewport.width,
     height: baseViewport.height
@@ -62,6 +63,15 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       viewport
     }).promise;
 
+    const thumbnailCanvas = document.createElement('canvas');
+    const thumbnailWidth = 92;
+    const thumbnailScale = thumbnailWidth / Math.max(viewport.width, 1);
+    thumbnailCanvas.width = Math.max(1, Math.round(viewport.width * thumbnailScale));
+    thumbnailCanvas.height = Math.max(1, Math.round(viewport.height * thumbnailScale));
+    thumbnailCanvas
+      .getContext('2d')
+      .drawImage(pdfCanvas, 0, 0, thumbnailCanvas.width, thumbnailCanvas.height);
+
     const textContentSource = await page.getTextContent();
     textLayerBuilder.setTextContentSource(textContentSource);
     await textLayerBuilder.render(viewport);
@@ -74,6 +84,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       commentLayer,
       textLayer,
       drawingCanvas,
+      thumbnailDataUrl: thumbnailCanvas.toDataURL('image/png'),
       width: viewport.width,
       height: viewport.height
     });
@@ -81,9 +92,138 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
 
   return {
     pages,
+    outline,
     resolvedScale,
     fragment
   };
+}
+
+async function buildOutline(pdf) {
+  const rawOutline = (await pdf.getOutline()) ?? [];
+  const pageIndexCache = new Map();
+  const destinationCache = new Map();
+  const pageViewportCache = new Map();
+
+  async function getPageViewport(pageNumber) {
+    if (!pageViewportCache.has(pageNumber)) {
+      const page = await pdf.getPage(pageNumber);
+      pageViewportCache.set(pageNumber, page.getViewport({ scale: 1 }));
+    }
+    return pageViewportCache.get(pageNumber);
+  }
+
+  async function resolveDestination(destination) {
+    if (!destination) {
+      return null;
+    }
+
+    let explicitDestination = destination;
+    if (typeof destination === 'string') {
+      if (destinationCache.has(destination)) {
+        explicitDestination = destinationCache.get(destination);
+      } else {
+        explicitDestination = await pdf.getDestination(destination);
+        destinationCache.set(destination, explicitDestination ?? null);
+      }
+    }
+
+    if (!Array.isArray(explicitDestination) || !explicitDestination.length) {
+      return null;
+    }
+
+    const destinationRef = explicitDestination[0];
+    if (Number.isInteger(destinationRef) && destinationRef >= 0) {
+      return {
+        pageNumber: destinationRef + 1,
+        explicitDestination
+      };
+    }
+
+    if (!destinationRef || typeof destinationRef !== 'object' || !('num' in destinationRef) || !('gen' in destinationRef)) {
+      return null;
+    }
+
+    const cacheKey = `${destinationRef.num}:${destinationRef.gen}`;
+    if (pageIndexCache.has(cacheKey)) {
+      return {
+        pageNumber: pageIndexCache.get(cacheKey),
+        explicitDestination
+      };
+    }
+
+    try {
+      const pageIndex = await pdf.getPageIndex(destinationRef);
+      const pageNumber = pageIndex + 1;
+      pageIndexCache.set(cacheKey, pageNumber);
+      return {
+        pageNumber,
+        explicitDestination
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function resolveOutlineTopRatio(destinationInfo) {
+    if (!destinationInfo?.explicitDestination || !destinationInfo.pageNumber) {
+      return 0;
+    }
+
+    const [, destinationType, ...args] = destinationInfo.explicitDestination;
+    const viewport = await getPageViewport(destinationInfo.pageNumber);
+    const destinationName = destinationType?.name;
+    let x = 0;
+    let y = viewport.height;
+
+    switch (destinationName) {
+      case 'XYZ':
+        y = args[1] ?? viewport.height;
+        break;
+      case 'FitH':
+      case 'FitBH':
+        y = typeof args[0] === 'number' ? args[0] : viewport.height;
+        break;
+      case 'FitR':
+        y = typeof args[1] === 'number' ? args[1] : viewport.height;
+        break;
+      case 'Fit':
+      case 'FitB':
+      default:
+        return 0;
+    }
+
+    const [, top] = viewport.convertToViewportPoint(x, y);
+    return Math.max(0, Math.min(1, top / Math.max(viewport.height, 1)));
+  }
+
+  async function mapItems(items, depth = 0) {
+    const results = [];
+
+    for (const item of items) {
+      const destinationInfo = await resolveDestination(item.dest);
+      const ownPageNumber = destinationInfo?.pageNumber ?? null;
+      const ownTopRatio = ownPageNumber ? await resolveOutlineTopRatio(destinationInfo) : 0;
+      const children = item.items?.length ? await mapItems(item.items, depth + 1) : [];
+      const fallbackPageNumber = children.find((child) => child.pageNumber)?.pageNumber ?? null;
+      const fallbackTopRatio = children.find((child) => child.pageNumber)?.topRatio ?? 0;
+      const pageNumber = ownPageNumber ?? fallbackPageNumber;
+      const topRatio = ownPageNumber ? ownTopRatio : fallbackTopRatio;
+
+      if (item.title?.trim() || pageNumber || children.length) {
+        results.push({
+          title: item.title?.trim() || `Section ${results.length + 1}`,
+          pageNumber,
+          topRatio,
+          depth,
+          items: children
+        });
+      }
+    }
+
+    return results;
+  }
+
+  return mapItems(rawOutline);
 }
 
 function resolveScale(zoomConfig, workspaceSize, basePageSize) {

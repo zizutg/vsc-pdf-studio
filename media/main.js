@@ -40,6 +40,10 @@ const icons = {
     '<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />'
   ),
   edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
+  ,
+  sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
+  chevronRight: createLucideIcon('<path d="m9 18 6-6-6-6" />', 'stroke-width="2.25"'),
+  chevronDown: createLucideIcon('<path d="m6 9 6 6 6-6" />', 'stroke-width="2.25"')
 };
 
 const state = {
@@ -71,11 +75,17 @@ const state = {
   selectionSnapshot: null,
   selectionAction: null,
   saveInFlight: false,
-  saveQueued: false
+  saveQueued: false,
+  sidebarOpen: false,
+  sidebarTab: 'outline',
+  activeOutlineKey: null,
+  collapsedOutline: {},
+  outline: []
 };
 
 app.innerHTML = `
   <div class="toolbar">
+    <button type="button" id="sidebar-toggle" aria-label="Toggle navigation" title="Toggle navigation">${icons.sidebar}</button>
     <label>
       Page
       <input id="page-input" type="number" min="1" value="1" />
@@ -139,12 +149,35 @@ app.innerHTML = `
       </div>
     </div>
   </div>
-  <div class="workspace">
-    <div id="pages"></div>
-    <div class="empty-state" id="message-box" hidden></div>
+  <div class="content-shell" id="content-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-tabs" id="sidebar-tabs">
+        <button type="button" class="sidebar-tab is-active" data-tab="outline" id="outline-tab" hidden>Outline</button>
+        <button type="button" class="sidebar-tab" data-tab="pages">Pages</button>
+      </div>
+      <div class="sidebar-panel" id="outline-panel" hidden>
+        <div class="sidebar-list sidebar-outline" id="outline-list"></div>
+      </div>
+      <div class="sidebar-panel" id="pages-panel">
+        <div class="sidebar-list sidebar-pages" id="page-list"></div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <div id="pages"></div>
+      <div class="empty-state" id="message-box" hidden></div>
+    </div>
   </div>
 `;
 
+const contentShellEl = document.querySelector('#content-shell');
+const sidebarToggleEl = document.querySelector('#sidebar-toggle');
+const sidebarEl = document.querySelector('#sidebar');
+const sidebarTabsEl = document.querySelector('#sidebar-tabs');
+const outlineTabEl = document.querySelector('#outline-tab');
+const pagesPanelEl = document.querySelector('#pages-panel');
+const outlinePanelEl = document.querySelector('#outline-panel');
+const pageListEl = document.querySelector('#page-list');
+const outlineListEl = document.querySelector('#outline-list');
 const pageInputEl = document.querySelector('#page-input');
 const pageTotalEl = document.querySelector('#page-total');
 const zoomInEl = document.querySelector('#zoom-in');
@@ -186,6 +219,231 @@ function normalizeSelectedText(text) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function getOutlineKey(item, path) {
+  return `${path.join('.')}:${item.pageNumber ?? ''}:${item.title}`;
+}
+
+function ensureSidebarItemVisible(container, item) {
+  if (!container || !item || container.hidden || sidebarEl.hidden) {
+    return;
+  }
+
+  const sidebarRect = container.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  const padding = 12;
+
+  if (itemRect.top < sidebarRect.top + padding) {
+    container.scrollTop -= sidebarRect.top + padding - itemRect.top;
+    return;
+  }
+
+  if (itemRect.bottom > sidebarRect.bottom - padding) {
+    container.scrollTop += itemRect.bottom - (sidebarRect.bottom - padding);
+  }
+}
+
+function expandOutlinePathForPage(items, pageNumber, path = []) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const itemPath = path.concat(index);
+    const itemKey = getOutlineKey(item, itemPath);
+    if (item.pageNumber === pageNumber) {
+      for (let ancestorLength = 1; ancestorLength < itemPath.length; ancestorLength += 1) {
+        const ancestorPath = itemPath.slice(0, ancestorLength);
+        const ancestor = ancestorPath.reduce((current, pathIndex) => current?.items?.[pathIndex], { items });
+        if (ancestor) {
+          state.collapsedOutline[getOutlineKey(ancestor, ancestorPath)] = false;
+        }
+      }
+      return true;
+    }
+
+    if (item.items?.length && expandOutlinePathForPage(item.items, pageNumber, itemPath)) {
+      state.collapsedOutline[itemKey] = false;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function renderSidebar(options = {}) {
+  pageListEl.replaceChildren();
+
+  for (const pageEntry of state.pageEntries) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sidebar-item page-nav-item';
+    button.dataset.page = String(pageEntry.pageNumber);
+    button.innerHTML = `
+      <img class="page-nav-thumb" src="${pageEntry.thumbnailDataUrl}" alt="Page ${pageEntry.pageNumber} preview" />
+      <span class="page-nav-copy">
+        <span class="sidebar-item-title">Page ${pageEntry.pageNumber}</span>
+      </span>
+    `;
+    button.addEventListener('click', () => {
+        jumpToPage(pageEntry.pageNumber);
+      });
+    pageListEl.append(button);
+  }
+
+  outlineListEl.replaceChildren();
+  outlineTabEl.hidden = state.outline.length === 0;
+  if (!state.outline.length && state.sidebarTab === 'outline') {
+    state.sidebarTab = 'pages';
+  } else if (state.outline.length && state.sidebarTab !== 'outline' && !state.sidebarOpen) {
+    state.sidebarTab = 'outline';
+  }
+
+  function appendOutlineItems(items, path = []) {
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      const itemPath = path.concat(index);
+      const itemKey = getOutlineKey(item, itemPath);
+      const isCollapsed = Boolean(state.collapsedOutline[itemKey]);
+      const hasChildren = Boolean(item.items?.length);
+      const entry = document.createElement(item.pageNumber ? 'button' : 'div');
+      entry.className = 'sidebar-item outline-item';
+      entry.style.setProperty('--depth', String(item.depth ?? path.length));
+      entry.dataset.outlineKey = itemKey;
+      if (item.pageNumber) {
+        entry.dataset.page = String(item.pageNumber);
+        entry.dataset.outlineTop = String(item.topRatio ?? 0);
+      }
+      entry.innerHTML = `
+        <span class="outline-chevron">${hasChildren ? (isCollapsed ? icons.chevronRight : icons.chevronDown) : ''}</span>
+        <span class="sidebar-item-title">${escapeHtml(item.title)}</span>
+        <span class="sidebar-item-meta"></span>
+      `;
+
+      if (item.pageNumber) {
+        entry.type = 'button';
+        entry.addEventListener('click', () => {
+          jumpToPage(item.pageNumber, itemKey);
+        });
+      } else {
+        entry.classList.add('is-static');
+      }
+
+      if (hasChildren) {
+        entry.classList.add('has-children');
+        const chevron = entry.querySelector('.outline-chevron');
+        if (chevron) {
+          chevron.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            state.collapsedOutline[itemKey] = !isCollapsed;
+            renderSidebar();
+          });
+        }
+      }
+
+      outlineListEl.append(entry);
+
+      if (hasChildren && !isCollapsed) {
+        appendOutlineItems(item.items, itemPath);
+      }
+    }
+  }
+
+  appendOutlineItems(state.outline);
+  updateSidebarTabUI();
+  updateSidebarActiveState(options);
+}
+
+function updateSidebarActiveState(options = {}) {
+  const pageNumber = String(state.currentPage);
+  const currentPageEntry = state.pageEntries.find((entry) => entry.pageNumber === state.currentPage);
+  const currentPageProgress = currentPageEntry
+    ? Math.max(
+        0,
+        Math.min(1, (workspaceEl.scrollTop - getPageScrollTop(currentPageEntry)) / Math.max(currentPageEntry.height, 1))
+      )
+    : 0;
+  let activePageItem = null;
+  for (const item of pageListEl.querySelectorAll('.sidebar-item')) {
+    const isActive = item.dataset.page === pageNumber;
+    item.classList.toggle('is-active', isActive);
+    if (isActive) {
+      activePageItem = item;
+    }
+  }
+
+  const preferredOutlineItem =
+    state.activeOutlineKey && outlineListEl.querySelector(`.sidebar-item[data-outline-key="${CSS.escape(state.activeOutlineKey)}"]`);
+  let activeOutlineItem = null;
+  let bestOutlineDistance = Number.POSITIVE_INFINITY;
+  let bestOutlineDepth = -1;
+
+  for (const item of outlineListEl.querySelectorAll('.sidebar-item')) {
+    item.classList.remove('is-active');
+
+    if (preferredOutlineItem === item && item.dataset.page === pageNumber) {
+      activeOutlineItem = item;
+      continue;
+    }
+
+    if (!preferredOutlineItem && item.dataset.page === pageNumber) {
+      const depth = Number(item.style.getPropertyValue('--depth'));
+      const outlineTop = Number(item.dataset.outlineTop ?? '0');
+      const distance = Math.abs(outlineTop - currentPageProgress);
+      if (
+        distance < bestOutlineDistance - 0.0001 ||
+        (Math.abs(distance - bestOutlineDistance) <= 0.0001 && depth >= bestOutlineDepth)
+      ) {
+        bestOutlineDistance = distance;
+        bestOutlineDepth = depth;
+        activeOutlineItem = item;
+      }
+    }
+  }
+
+  if (activeOutlineItem) {
+    activeOutlineItem.classList.add('is-active');
+  }
+
+  const activeItem = state.sidebarTab === 'outline' ? activeOutlineItem : activePageItem;
+  if (options.reveal && activeItem) {
+    ensureSidebarItemVisible(state.sidebarTab === 'outline' ? outlinePanelEl : pagesPanelEl, activeItem);
+  }
+}
+
+function setSidebarTab(nextTab) {
+  state.sidebarTab = nextTab;
+  updateSidebarTabUI();
+  updateSidebarActiveState({ reveal: true });
+}
+
+function updateSidebarTabUI() {
+  for (const tab of sidebarTabsEl.querySelectorAll('.sidebar-tab')) {
+    tab.classList.toggle('is-active', tab.dataset.tab === state.sidebarTab);
+  }
+
+  pagesPanelEl.hidden = state.sidebarTab !== 'pages';
+  outlinePanelEl.hidden = state.sidebarTab !== 'outline';
+}
+
+function setSidebarOpen(nextOpen) {
+  state.sidebarOpen = nextOpen;
+  contentShellEl.classList.toggle('is-sidebar-collapsed', !nextOpen);
+  sidebarEl.hidden = !nextOpen;
+  sidebarToggleEl.classList.toggle('is-active', nextOpen);
+  sidebarToggleEl.setAttribute('aria-pressed', String(nextOpen));
+  if (nextOpen) {
+    updateSidebarTabUI();
+    updateSidebarActiveState({ reveal: true });
+  }
+}
+
+function escapeHtml(text) {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function renderHighlights(highlights) {
@@ -430,7 +688,7 @@ async function rerenderPages() {
     width: workspaceEl.clientWidth,
     height: workspaceEl.clientHeight
   };
-  const { pages, resolvedScale, fragment } = await renderPdf(
+  const { pages, outline, resolvedScale, fragment } = await renderPdf(
     state.pdfBase64,
     pagesEl,
     getZoomConfig(),
@@ -443,6 +701,7 @@ async function rerenderPages() {
 
   pagesEl.replaceChildren(fragment);
   state.pageEntries = pages;
+  state.outline = outline;
   state.zoom = resolvedScale;
   state.renderedZoom = resolvedScale;
   state.totalPages = state.pageEntries.length;
@@ -475,6 +734,7 @@ async function rerenderPages() {
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
   renderComments(state.sessionAnnotations.comments);
+  renderSidebar();
   updatePageIndicator();
   updateZoomPresetIndicator();
   updateInteractionMode();
@@ -519,7 +779,16 @@ function updateCurrentPageFromScroll() {
   }
 
   state.currentPage = closestPage;
+  if (state.activeOutlineKey) {
+    const activeOutlineItem = outlineListEl.querySelector(
+      `.sidebar-item[data-outline-key="${CSS.escape(state.activeOutlineKey)}"]`
+    );
+    if (!activeOutlineItem || activeOutlineItem.dataset.page !== String(closestPage)) {
+      state.activeOutlineKey = null;
+    }
+  }
   updatePageIndicator();
+  updateSidebarActiveState();
 }
 
 function setActiveColor(color) {
@@ -531,7 +800,7 @@ function setActiveColor(color) {
   }
 }
 
-function jumpToPage(pageNumber) {
+function jumpToPage(pageNumber, outlineKey = null) {
   const targetPage = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
   if (!targetPage) {
     return;
@@ -539,7 +808,14 @@ function jumpToPage(pageNumber) {
 
   state.pageJumpInProgress = true;
   state.currentPage = pageNumber;
+  state.activeOutlineKey = outlineKey;
+  const expandedOutline = expandOutlinePathForPage(state.outline, pageNumber);
   updatePageIndicator();
+  if (expandedOutline) {
+    renderSidebar({ reveal: true });
+  } else {
+    updateSidebarActiveState({ reveal: true });
+  }
   targetPage.pageShell.scrollIntoView({
     behavior: 'auto',
     block: 'start',
@@ -983,6 +1259,19 @@ zoomInEl.addEventListener('click', () => {
   void adjustZoom(0.25);
 });
 
+sidebarToggleEl.addEventListener('click', () => {
+  setSidebarOpen(!state.sidebarOpen);
+});
+
+sidebarTabsEl.addEventListener('click', (event) => {
+  const tab = event.target.closest('.sidebar-tab');
+  if (!tab || tab.hidden) {
+    return;
+  }
+
+  setSidebarTab(tab.dataset.tab);
+});
+
 zoomOutEl.addEventListener('click', () => {
   void adjustZoom(-0.25);
 });
@@ -1128,7 +1417,10 @@ window.addEventListener('message', async (event) => {
     state.commentComposer = null;
     state.selectionSnapshot = null;
     state.selectionAction = null;
+    state.outline = [];
     commentButtonEl.disabled = true;
+    setSidebarOpen(false);
+    setSidebarTab('outline');
 
     try {
       await rerenderPages();

@@ -28,6 +28,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     const pageShell = document.createElement('div');
     const pdfCanvas = document.createElement('canvas');
     const highlightLayer = document.createElement('div');
+    const searchLayer = document.createElement('div');
     const commentLayer = document.createElement('div');
     const textLayerBuilder = new TextLayerBuilder({});
     const textLayer = textLayerBuilder.div;
@@ -36,6 +37,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     pageShell.className = 'page-shell';
     pdfCanvas.className = 'pdf-canvas';
     highlightLayer.className = 'highlight-layer';
+    searchLayer.className = 'search-layer';
     commentLayer.className = 'comment-layer';
     textLayer.classList.add('text-layer');
     drawingCanvas.className = 'drawing-canvas';
@@ -55,7 +57,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     textLayer.style.width = `${unscaledViewport.width}px`;
     textLayer.style.height = `${unscaledViewport.height}px`;
 
-    pageShell.append(pdfCanvas, highlightLayer, textLayer, commentLayer, drawingCanvas);
+    pageShell.append(pdfCanvas, highlightLayer, searchLayer, textLayer, commentLayer, drawingCanvas);
     fragment.append(pageShell);
 
     await page.render({
@@ -81,8 +83,11 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       pageShell,
       pdfCanvas,
       highlightLayer,
+      searchLayer,
       commentLayer,
       textLayer,
+      textDivs: textLayerBuilder.textDivs,
+      textContentItemsStr: textLayerBuilder.textContentItemsStr,
       drawingCanvas,
       thumbnailDataUrl: thumbnailCanvas.toDataURL('image/png'),
       width: viewport.width,
@@ -209,15 +214,13 @@ async function buildOutline(pdf) {
       const pageNumber = ownPageNumber ?? fallbackPageNumber;
       const topRatio = ownPageNumber ? ownTopRatio : fallbackTopRatio;
 
-      if (item.title?.trim() || pageNumber || children.length) {
-        results.push({
-          title: item.title?.trim() || `Section ${results.length + 1}`,
-          pageNumber,
-          topRatio,
-          depth,
-          items: children
-        });
-      }
+      results.push({
+        title: item.title?.trim() || `Section ${results.length + 1}`,
+        pageNumber,
+        topRatio,
+        depth,
+        items: children
+      });
     }
 
     return results;

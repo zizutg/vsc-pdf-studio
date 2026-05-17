@@ -25,6 +25,7 @@ const icons = {
   comment: createLucideIcon(
     '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h8" /><path d="M8 7h6" />'
   ),
+  search: createLucideIcon('<circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />'),
   pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
   eraser: createLucideIcon(
     '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
@@ -42,6 +43,7 @@ const icons = {
   edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
   ,
   sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
+  chevronLeft: createLucideIcon('<path d="m15 18-6-6 6-6" />', 'stroke-width="2.25"'),
   chevronRight: createLucideIcon('<path d="m9 18 6-6-6-6" />', 'stroke-width="2.25"'),
   chevronDown: createLucideIcon('<path d="m6 9 6 6 6-6" />', 'stroke-width="2.25"')
 };
@@ -80,7 +82,11 @@ const state = {
   sidebarTab: 'outline',
   activeOutlineKey: null,
   collapsedOutline: {},
-  outline: []
+  outline: [],
+  searchOpen: false,
+  searchQuery: '',
+  searchMatches: [],
+  activeSearchMatchIndex: -1
 };
 
 app.innerHTML = `
@@ -94,7 +100,7 @@ app.innerHTML = `
     <div class="zoom-controls">
       <button type="button" id="zoom-out" aria-label="Zoom out">${icons.minus}</button>
       <select id="zoom-preset">
-        <option value="automatic">Automatic Zoom</option>
+        <option value="automatic">Auto</option>
         <option value="actual-size">Actual Size</option>
         <option value="page-fit">Page Fit</option>
         <option value="page-width">Page Width</option>
@@ -118,6 +124,16 @@ app.innerHTML = `
       <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
     </div>
     <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
+    <div class="search-wrap">
+      <button type="button" id="search-button" aria-label="Search document" title="Search document">${icons.search}</button>
+      <div class="search-panel" id="search-panel" hidden>
+        <input id="search-input" type="search" placeholder="Search" spellcheck="false" />
+        <span class="search-count" id="search-count">0 / 0</span>
+        <button type="button" id="search-prev" aria-label="Previous result" title="Previous">${icons.chevronLeft}</button>
+        <button type="button" id="search-next" aria-label="Next result" title="Next">${icons.chevronRight}</button>
+        <button type="button" id="search-close" aria-label="Close search" title="Close">${icons.close}</button>
+      </div>
+    </div>
     <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
     <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
     <div class="color-group">
@@ -187,6 +203,13 @@ const modeToggleEl = document.querySelector('#mode-toggle');
 const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
+const searchButtonEl = document.querySelector('#search-button');
+const searchPanelEl = document.querySelector('#search-panel');
+const searchInputEl = document.querySelector('#search-input');
+const searchCountEl = document.querySelector('#search-count');
+const searchPrevEl = document.querySelector('#search-prev');
+const searchNextEl = document.querySelector('#search-next');
+const searchCloseEl = document.querySelector('#search-close');
 const menuButtonEl = document.querySelector('#menu-button');
 const menuPanelEl = document.querySelector('#menu-panel');
 const colorPaletteEl = document.querySelector('#color-palette');
@@ -209,6 +232,22 @@ state.history = [structuredClone(state.sessionAnnotations)];
 
 function cloneAnnotations(annotations) {
   return structuredClone(annotations);
+}
+
+function findTextNode(node) {
+  if (!node) {
+    return null;
+  }
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node;
+  }
+
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  return walker.nextNode();
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizeSelectedText(text) {
@@ -473,6 +512,208 @@ function renderHighlights(highlights) {
   }
 }
 
+function renderSearchHighlights() {
+  for (const pageEntry of state.pageEntries) {
+    pageEntry.searchLayer.replaceChildren();
+  }
+
+  for (let index = 0; index < state.searchMatches.length; index += 1) {
+    const match = state.searchMatches[index];
+    const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === match.pageNumber);
+    if (!pageEntry) {
+      continue;
+    }
+
+    for (const rect of match.rects) {
+      const box = document.createElement('div');
+      box.className = `search-box${index === state.activeSearchMatchIndex ? ' is-active' : ''}`;
+      box.style.left = `${rect.x}px`;
+      box.style.top = `${rect.y}px`;
+      box.style.width = `${rect.width}px`;
+      box.style.height = `${rect.height}px`;
+      pageEntry.searchLayer.append(box);
+    }
+  }
+}
+
+function setSearchOpen(nextOpen) {
+  state.searchOpen = nextOpen;
+  searchPanelEl.hidden = !nextOpen;
+  searchButtonEl.classList.toggle('is-active', nextOpen);
+  if (nextOpen) {
+    window.setTimeout(() => {
+      searchInputEl.focus();
+      searchInputEl.select();
+    }, 0);
+  }
+}
+
+function updateSearchUI() {
+  const total = state.searchMatches.length;
+  const current = total && state.activeSearchMatchIndex >= 0 ? state.activeSearchMatchIndex + 1 : 0;
+  searchCountEl.textContent = `${current} / ${total}`;
+  searchPrevEl.disabled = total === 0;
+  searchNextEl.disabled = total === 0;
+}
+
+function computePageSearchMatches(pageEntry, query) {
+  const textItems = pageEntry.textContentItemsStr ?? [];
+  const textDivs = pageEntry.textDivs ?? [];
+  if (!textItems.length || !textDivs.length) {
+    return [];
+  }
+
+  const pageText = textItems.join('');
+  const normalizedQuery = query.toLocaleLowerCase();
+  const normalizedText = pageText.toLocaleLowerCase();
+  const matches = [];
+  const starts = [];
+  let total = 0;
+  for (const item of textItems) {
+    starts.push(total);
+    total += item.length;
+  }
+
+  function findItemIndex(offset) {
+    let low = 0;
+    let high = starts.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const start = starts[mid];
+      const end = start + textItems[mid].length;
+      if (offset < start) {
+        high = mid - 1;
+      } else if (offset >= end) {
+        low = mid + 1;
+      } else {
+        return mid;
+      }
+    }
+    return -1;
+  }
+
+  let searchIndex = 0;
+  while (searchIndex <= normalizedText.length) {
+    const matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
+    if (matchIndex === -1) {
+      break;
+    }
+
+    const endIndex = matchIndex + normalizedQuery.length;
+    const startItemIndex = findItemIndex(matchIndex);
+    const endItemIndex = findItemIndex(Math.max(matchIndex, endIndex - 1));
+    if (startItemIndex === -1 || endItemIndex === -1) {
+      searchIndex = matchIndex + 1;
+      continue;
+    }
+
+    const startNode = findTextNode(textDivs[startItemIndex]);
+    const endNode = findTextNode(textDivs[endItemIndex]);
+    if (!startNode || !endNode) {
+      searchIndex = matchIndex + 1;
+      continue;
+    }
+
+    const range = document.createRange();
+    range.setStart(startNode, matchIndex - starts[startItemIndex]);
+    range.setEnd(endNode, endIndex - starts[endItemIndex]);
+    const layerRect = pageEntry.textLayer.getBoundingClientRect();
+    const scaleX = pageEntry.width / Math.max(layerRect.width, 1);
+    const scaleY = pageEntry.height / Math.max(layerRect.height, 1);
+    const rects = Array.from(range.getClientRects())
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .map((rect) => ({
+        x: (rect.left - layerRect.left) * scaleX,
+        y: (rect.top - layerRect.top) * scaleY,
+        width: rect.width * scaleX,
+        height: rect.height * scaleY
+      }));
+
+    if (rects.length) {
+      matches.push({
+        pageNumber: pageEntry.pageNumber,
+        rects
+      });
+    }
+
+    searchIndex = matchIndex + Math.max(normalizedQuery.length, 1);
+  }
+
+  return matches;
+}
+
+function updateSearchResults(options = {}) {
+  const query = state.searchQuery.trim();
+  if (!query) {
+    state.searchMatches = [];
+    state.activeSearchMatchIndex = -1;
+    renderSearchHighlights();
+    updateSearchUI();
+    return;
+  }
+
+  const previousMatch = options.preserveActive ? state.searchMatches[state.activeSearchMatchIndex] : null;
+  state.searchMatches = state.pageEntries.flatMap((pageEntry) => computePageSearchMatches(pageEntry, query));
+
+  if (!state.searchMatches.length) {
+    state.activeSearchMatchIndex = -1;
+  } else if (previousMatch) {
+    const restoredIndex = state.searchMatches.findIndex(
+      (match) =>
+        match.pageNumber === previousMatch.pageNumber &&
+        Math.abs((match.rects[0]?.y ?? 0) - (previousMatch.rects[0]?.y ?? 0)) < 1
+    );
+    state.activeSearchMatchIndex = restoredIndex >= 0 ? restoredIndex : 0;
+  } else if (state.activeSearchMatchIndex < 0 || state.activeSearchMatchIndex >= state.searchMatches.length) {
+    state.activeSearchMatchIndex = 0;
+  }
+
+  renderSearchHighlights();
+  updateSearchUI();
+}
+
+function revealSearchMatch(index) {
+  const match = state.searchMatches[index];
+  if (!match) {
+    return;
+  }
+
+  const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === match.pageNumber);
+  if (!pageEntry || !match.rects.length) {
+    return;
+  }
+
+  state.pageJumpInProgress = true;
+  state.currentPage = match.pageNumber;
+  updatePageIndicator();
+  const rect = match.rects[0];
+  workspaceEl.scrollTo({
+    top: getPageScrollTop(pageEntry) + Math.max(0, rect.y - 32),
+    left: Math.max(0, rect.x - 24),
+    behavior: 'auto'
+  });
+  window.setTimeout(() => {
+    state.pageJumpInProgress = false;
+    updateCurrentPageFromScroll();
+  }, 120);
+}
+
+function moveSearchMatch(direction) {
+  if (!state.searchMatches.length) {
+    return;
+  }
+
+  const total = state.searchMatches.length;
+  const nextIndex =
+    state.activeSearchMatchIndex < 0
+      ? 0
+      : (state.activeSearchMatchIndex + direction + total) % total;
+  state.activeSearchMatchIndex = nextIndex;
+  renderSearchHighlights();
+  updateSearchUI();
+  revealSearchMatch(nextIndex);
+}
+
 function renderComments(comments) {
   for (const pageEntry of state.pageEntries) {
     pageEntry.commentLayer.replaceChildren();
@@ -734,6 +975,7 @@ async function rerenderPages() {
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
   renderComments(state.sessionAnnotations.comments);
+  updateSearchResults({ preserveActive: true });
   renderSidebar();
   updatePageIndicator();
   updateZoomPresetIndicator();
@@ -1263,6 +1505,39 @@ sidebarToggleEl.addEventListener('click', () => {
   setSidebarOpen(!state.sidebarOpen);
 });
 
+searchButtonEl.addEventListener('click', () => {
+  setSearchOpen(!state.searchOpen);
+});
+
+searchInputEl.addEventListener('input', () => {
+  state.searchQuery = searchInputEl.value;
+  state.activeSearchMatchIndex = -1;
+  updateSearchResults();
+});
+
+searchInputEl.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    moveSearchMatch(event.shiftKey ? -1 : 1);
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setSearchOpen(false);
+  }
+});
+
+searchPrevEl.addEventListener('click', () => {
+  moveSearchMatch(-1);
+});
+
+searchNextEl.addEventListener('click', () => {
+  moveSearchMatch(1);
+});
+
+searchCloseEl.addEventListener('click', () => {
+  setSearchOpen(false);
+});
+
 sidebarTabsEl.addEventListener('click', (event) => {
   const tab = event.target.closest('.sidebar-tab');
   if (!tab || tab.hidden) {
@@ -1351,6 +1626,10 @@ window.addEventListener('click', (event) => {
     renderComments(state.sessionAnnotations.comments);
   }
 
+  if (state.searchOpen && !event.target.closest('.search-wrap')) {
+    setSearchOpen(false);
+  }
+
   if (menuPanelEl.hidden) {
     return;
   }
@@ -1374,6 +1653,17 @@ document.addEventListener('selectionchange', () => {
 });
 
 window.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    setSearchOpen(true);
+    return;
+  }
+
+  if (event.key === 'Escape' && state.searchOpen && !isTextEditingTarget(event.target)) {
+    setSearchOpen(false);
+    return;
+  }
+
   if (isTextEditingTarget(event.target) || (!event.ctrlKey && !event.metaKey) || event.altKey) {
     return;
   }
@@ -1418,7 +1708,13 @@ window.addEventListener('message', async (event) => {
     state.selectionSnapshot = null;
     state.selectionAction = null;
     state.outline = [];
+    state.searchOpen = false;
+    state.searchQuery = '';
+    state.searchMatches = [];
+    state.activeSearchMatchIndex = -1;
     commentButtonEl.disabled = true;
+    searchInputEl.value = '';
+    updateSearchUI();
     setSidebarOpen(false);
     setSidebarTab('outline');
 

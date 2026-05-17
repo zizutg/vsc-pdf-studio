@@ -27,6 +27,25 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 - Saved comments/highlights are rendered into the PDF for external-reader compatibility
 - Comment/search/selection behavior depends on the embedded text layer of the source PDF; scanned image PDFs may not behave like text PDFs
 
+## Git Tracking
+
+If you want to track PDF revisions in Git, configure your repository with an appropriate `.gitattributes` setup for PDF files. 
+- PDF Studio writes changes back into the PDF itself, but version tracking and diff strategy are still handled by Git rather than by the extension.
+
+For standard Git tracking, add this to `.gitattributes`:
+
+```gitattributes
+*.pdf binary
+```
+
+If your repository uses Git LFS for large binary files, use this instead:
+
+```gitattributes
+*.pdf filter=lfs diff=lfs merge=lfs -text
+```
+
+This ensures PDFs are tracked as binary assets. It does not create human-readable PDF diffs by itself; it only tells Git how to store and treat the files.
+
 ## Development
 
 ```bash

@@ -42,6 +42,7 @@ const icons = {
   ),
   edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
   ,
+  copy: createLucideIcon('<rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />'),
   sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
   chevronLeft: createLucideIcon('<path d="m15 18-6-6 6-6" />', 'stroke-width="2.25"'),
   chevronRight: createLucideIcon('<path d="m9 18 6-6-6-6" />', 'stroke-width="2.25"'),
@@ -86,7 +87,8 @@ const state = {
   searchOpen: false,
   searchQuery: '',
   searchMatches: [],
-  activeSearchMatchIndex: -1
+  activeSearchMatchIndex: -1,
+  colorPopoverOwner: null
 };
 
 app.innerHTML = `
@@ -117,13 +119,24 @@ app.innerHTML = `
       </select>
       <button type="button" id="zoom-in" aria-label="Zoom in">${icons.plus}</button>
     </div>
-    <div class="mode-toggle" id="mode-toggle">
-      <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
-      <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
-      <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
-      <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
+    <div class="mode-wrap">
+      <div class="mode-toggle" id="mode-toggle">
+        <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
+        <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
+        <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
+        <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
+      </div>
     </div>
     <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
+    <div class="color-popover" id="color-popover" hidden>
+      <div class="color-palette" id="color-palette">
+        <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
+        <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
+        <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
+        <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
+        <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
+      </div>
+    </div>
     <div class="search-wrap">
       <button type="button" id="search-button" aria-label="Search document" title="Search document">${icons.search}</button>
       <div class="search-panel" id="search-panel" hidden>
@@ -136,15 +149,6 @@ app.innerHTML = `
     </div>
     <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
     <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
-    <div class="color-group">
-      <div class="color-palette" id="color-palette">
-        <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
-        <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
-        <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
-        <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
-        <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
-      </div>
-    </div>
     <div class="menu-wrap">
       <button type="button" id="menu-button" aria-label="More tools" title="More tools">${icons.menu}</button>
       <div class="menu-panel" id="menu-panel" hidden>
@@ -186,6 +190,7 @@ app.innerHTML = `
 `;
 
 const contentShellEl = document.querySelector('#content-shell');
+const toolbarEl = document.querySelector('.toolbar');
 const sidebarToggleEl = document.querySelector('#sidebar-toggle');
 const sidebarEl = document.querySelector('#sidebar');
 const sidebarTabsEl = document.querySelector('#sidebar-tabs');
@@ -200,6 +205,7 @@ const zoomInEl = document.querySelector('#zoom-in');
 const zoomOutEl = document.querySelector('#zoom-out');
 const zoomPresetEl = document.querySelector('#zoom-preset');
 const modeToggleEl = document.querySelector('#mode-toggle');
+const colorPopoverEl = document.querySelector('#color-popover');
 const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
@@ -748,6 +754,9 @@ function renderComments(comments) {
         pageEntry.height - markerSize - 2,
         Math.max(2, anchor.y * scaleY - markerSize * 0.7)
       );
+      const anchorRight = (anchor.x + anchor.width) * scaleX;
+      const anchorTop = firstRect.y * scaleY;
+      const anchorBottom = firstRect.y * scaleY + firstRect.height * scaleY;
 
       const marker = document.createElement('button');
       marker.type = 'button';
@@ -759,20 +768,43 @@ function renderComments(comments) {
       marker.title = 'Open comment';
       marker.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (state.commentComposer) {
+          submitCommentComposer();
+          if (state.commentComposer) {
+            cancelCommentComposer();
+          }
+        }
+        if (state.openCommentId !== comment.id) {
+          ensureRightDockVisible(comment.page, 260, 10);
+        }
         state.openCommentId = state.openCommentId === comment.id ? null : comment.id;
         renderComments(state.sessionAnnotations.comments);
       });
       pageEntry.commentLayer.append(marker);
 
       if (state.openCommentId === comment.id) {
+        const popupWidth = 260;
+        const popupHeight = 72;
+        const popupGap = 10;
+        const rightDockLeft = pageEntry.width + popupGap;
+        const popupTop = Math.min(
+          pageEntry.height - popupHeight,
+          Math.max(2, anchorTop - 2)
+        );
+        const connector = document.createElement('div');
+        connector.className = 'comment-connector';
+        connector.style.left = `${markerLeft + markerSize}px`;
+        connector.style.top = `${markerTop + markerSize / 2}px`;
+        connector.style.width = `${Math.max(8, rightDockLeft + popupWidth / 2 - (markerLeft + markerSize))}px`;
+        connector.style.setProperty('--comment-accent', comment.color);
+        pageEntry.commentLayer.append(connector);
+
         const popup = document.createElement('div');
         popup.className = 'comment-popup';
-        popup.style.left = `${Math.min(pageEntry.width - 132, Math.max(2, markerLeft + 8))}px`;
-        popup.style.top = `${Math.min(
-          pageEntry.height - 72,
-          Math.max(2, firstRect.y * scaleY + firstRect.height * scaleY + 4)
-        )}px`;
+        popup.style.left = `${rightDockLeft}px`;
+        popup.style.top = `${popupTop}px`;
         popup.style.borderColor = comment.color;
+        popup.style.setProperty('--comment-accent', comment.color);
         popup.innerHTML = `
           <div class="comment-popup-text"></div>
           <div class="comment-popup-actions">
@@ -782,6 +814,8 @@ function renderComments(comments) {
         `;
         popup.querySelector('.comment-popup-text').textContent = comment.text;
         popup.querySelector('.comment-edit').addEventListener('click', () => {
+          state.openCommentId = null;
+          ensureRightDockVisible(comment.page, 210, 10);
           state.commentComposer = {
             id: comment.id,
             page: comment.page,
@@ -808,13 +842,31 @@ function renderComments(comments) {
       const anchor = state.commentComposer.rects[0];
       const scaleX = pageEntry.width / Math.max(state.commentComposer.viewportWidth || pageEntry.width, 1);
       const scaleY = pageEntry.height / Math.max(state.commentComposer.viewportHeight || pageEntry.height, 1);
+      const composerWidth = 210;
+      const composerHeight = 110;
+      const composerGap = 10;
+      const anchorTop = anchor.y * scaleY;
+      const markerAnchorLeft = Math.max(2, (anchor.x + anchor.width) * scaleX + 1);
+      const markerAnchorTop = Math.max(2, anchor.y * scaleY + Math.max(anchor.height * scaleY * 0.5, 4));
       const composer = document.createElement('div');
       composer.className = 'comment-composer';
-      composer.style.left = `${Math.min(pageEntry.width - 220, Math.max(2, anchor.x * scaleX))}px`;
-      composer.style.top = `${Math.min(
-        pageEntry.height - 110,
-        anchor.y * scaleY + anchor.height * scaleY + 3
-      )}px`;
+      const rightDockLeft = pageEntry.width + composerGap;
+      const composerTop = Math.min(
+        pageEntry.height - composerHeight,
+        Math.max(2, anchorTop - 2)
+      );
+      const connector = document.createElement('div');
+      connector.className = 'comment-connector';
+      connector.style.left = `${markerAnchorLeft}px`;
+      connector.style.top = `${markerAnchorTop}px`;
+      connector.style.width = `${Math.max(8, rightDockLeft + composerWidth / 2 - markerAnchorLeft)}px`;
+      connector.style.setProperty('--comment-accent', state.commentComposer.color);
+      pageEntry.commentLayer.append(connector);
+
+      composer.style.left = `${rightDockLeft}px`;
+      composer.style.top = `${composerTop}px`;
+      composer.style.borderColor = state.commentComposer.color;
+      composer.style.setProperty('--comment-accent', state.commentComposer.color);
       composer.innerHTML = `
         <div class="comment-editor-wrap">
           <textarea class="comment-input" placeholder="Add a comment..."></textarea>
@@ -833,6 +885,12 @@ function renderComments(comments) {
       input.value = state.commentComposer.text;
       input.addEventListener('input', () => {
         state.commentComposer.text = input.value;
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          submitCommentComposer();
+        }
       });
       saveButton.addEventListener('click', () => {
         submitCommentComposer();
@@ -864,13 +922,37 @@ function renderSelectionAction() {
   actions.style.left = `${state.selectionAction.left}px`;
   actions.style.top = `${state.selectionAction.top}px`;
   actions.innerHTML = `
+    <button type="button" class="selection-action-button selection-action-copy" aria-label="Copy selection" title="Copy">${icons.copy}</button>
     <button type="button" class="selection-action-button selection-action-highlight" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
     <button type="button" class="selection-action-button selection-action-comment" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
   `;
   actions.addEventListener('mousedown', (event) => {
     event.preventDefault();
   });
-  const [highlightButton, commentButton] = actions.querySelectorAll('.selection-action-button');
+  const [copyButton, highlightButton, commentButton] = actions.querySelectorAll('.selection-action-button');
+  copyButton.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    const text = state.selectionSnapshot?.text?.trim();
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Best-effort fallback for older clipboard paths.
+      const fallback = document.createElement('textarea');
+      fallback.value = text;
+      fallback.setAttribute('readonly', '');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.append(fallback);
+      fallback.select();
+      document.execCommand('copy');
+      fallback.remove();
+    }
+    state.selectionAction = null;
+    renderSelectionAction();
+  });
   highlightButton.addEventListener('click', (event) => {
     event.stopPropagation();
     addHighlightFromSelection(true);
@@ -975,6 +1057,14 @@ async function rerenderPages() {
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
   renderComments(state.sessionAnnotations.comments);
+  if (state.commentComposer) {
+    ensureRightDockVisible(state.commentComposer.page, 210, 10);
+  } else if (state.openCommentId) {
+    const openComment = state.sessionAnnotations.comments.find((comment) => comment.id === state.openCommentId);
+    if (openComment) {
+      ensureRightDockVisible(openComment.page, 130, 10);
+    }
+  }
   updateSearchResults({ preserveActive: true });
   renderSidebar();
   updatePageIndicator();
@@ -1042,6 +1132,48 @@ function setActiveColor(color) {
   }
 }
 
+function ensureRightDockVisible(pageNumber, overlayWidth, gap = 10) {
+  const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
+  if (!pageEntry) {
+    return;
+  }
+
+  const padding = 8;
+  const requiredRight = pageEntry.pageShell.offsetLeft + pageEntry.width + gap + overlayWidth + padding;
+  const visibleRight = workspaceEl.scrollLeft + workspaceEl.clientWidth;
+  if (requiredRight <= visibleRight) {
+    return;
+  }
+
+  workspaceEl.scrollLeft = Math.max(0, requiredRight - workspaceEl.clientWidth);
+}
+
+function setColorPopoverOpen(nextOpen, owner = state.colorPopoverOwner ?? state.mode) {
+  const canOpen = owner === 'highlight' || owner === 'annotate' || owner === 'comment';
+  const shouldOpen = nextOpen && canOpen;
+  state.colorPopoverOwner = shouldOpen ? owner : null;
+  colorPopoverEl.hidden = !shouldOpen;
+
+  if (!shouldOpen) {
+    colorPopoverEl.style.removeProperty('--popover-left');
+    return;
+  }
+
+  const triggerButton =
+    owner === 'comment'
+      ? commentButtonEl
+      : modeToggleEl.querySelector(`.mode-button[data-mode="${owner}"]`);
+  const toolbarRect = toolbarEl.getBoundingClientRect();
+  const buttonRect = triggerButton?.getBoundingClientRect();
+  if (!buttonRect) {
+    colorPopoverEl.style.setProperty('--popover-left', '0px');
+    return;
+  }
+
+  const left = buttonRect.left - toolbarRect.left + buttonRect.width / 2;
+  colorPopoverEl.style.setProperty('--popover-left', `${left}px`);
+}
+
 function jumpToPage(pageNumber, outlineKey = null) {
   const targetPage = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
   if (!targetPage) {
@@ -1072,6 +1204,7 @@ function jumpToPage(pageNumber, outlineKey = null) {
 
 function setMode(mode) {
   state.mode = mode;
+  setColorPopoverOpen(mode === 'highlight' || mode === 'annotate' || mode === 'comment', mode);
   updateInteractionMode();
 }
 
@@ -1079,9 +1212,10 @@ function updateInteractionMode() {
   for (const button of modeToggleEl.querySelectorAll('.mode-button')) {
     button.classList.toggle('is-active', button.dataset.mode === state.mode);
   }
+  commentButtonEl.classList.toggle('is-active', state.mode === 'comment');
 
   for (const pageEntry of state.pageEntries) {
-    const textInteractionEnabled = state.mode === 'select' || state.mode === 'highlight';
+    const textInteractionEnabled = state.mode === 'select' || state.mode === 'highlight' || state.mode === 'comment';
     pageEntry.drawingCanvas.style.pointerEvents = textInteractionEnabled ? 'none' : 'auto';
     pageEntry.drawingCanvas.style.cursor =
       state.mode === 'erase' ? 'not-allowed' : textInteractionEnabled ? 'text' : 'crosshair';
@@ -1136,7 +1270,6 @@ function addHighlightFromSelection(force = false) {
   window.getSelection()?.removeAllRanges();
   state.selectionSnapshot = null;
   state.selectionAction = null;
-  commentButtonEl.disabled = true;
   renderSelectionAction();
 }
 
@@ -1145,7 +1278,6 @@ function snapshotSelection() {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     state.selectionSnapshot = null;
     state.selectionAction = null;
-    commentButtonEl.disabled = true;
     renderSelectionAction();
     return;
   }
@@ -1155,7 +1287,6 @@ function snapshotSelection() {
   if (!pageEntry) {
     state.selectionSnapshot = null;
     state.selectionAction = null;
-    commentButtonEl.disabled = true;
     renderSelectionAction();
     return;
   }
@@ -1164,7 +1295,6 @@ function snapshotSelection() {
   if (!pageRect.width || !pageRect.height) {
     state.selectionSnapshot = null;
     state.selectionAction = null;
-    commentButtonEl.disabled = true;
     renderSelectionAction();
     return;
   }
@@ -1183,7 +1313,6 @@ function snapshotSelection() {
   if (!rects.length) {
     state.selectionSnapshot = null;
     state.selectionAction = null;
-    commentButtonEl.disabled = true;
     renderSelectionAction();
     return;
   }
@@ -1207,7 +1336,6 @@ function snapshotSelection() {
       pageEntry.pageShell.offsetTop + firstRect.y + firstRect.height + 16
     )
   };
-  commentButtonEl.disabled = false;
   renderSelectionAction();
 }
 
@@ -1278,7 +1406,6 @@ function submitCommentComposer() {
   window.getSelection()?.removeAllRanges();
   state.selectionSnapshot = null;
   state.selectionAction = null;
-  commentButtonEl.disabled = true;
   renderSelectionAction();
 }
 
@@ -1595,7 +1722,10 @@ commentButtonEl.addEventListener('mousedown', (event) => {
 });
 
 commentButtonEl.addEventListener('click', () => {
-  addCommentFromSelection();
+  setMode('comment');
+  if (state.selectionSnapshot) {
+    addCommentFromSelection();
+  }
 });
 
 menuButtonEl.addEventListener('click', () => {
@@ -1616,6 +1746,10 @@ strokeColorEl.addEventListener('input', () => {
 });
 
 window.addEventListener('click', (event) => {
+  if (!event.target.closest('.mode-wrap, #comment-button, #color-popover')) {
+    setColorPopoverOpen(false);
+  }
+
   if (!event.target.closest('.selection-action')) {
     state.selectionAction = null;
     renderSelectionAction();
@@ -1644,6 +1778,10 @@ window.addEventListener('click', (event) => {
 window.addEventListener('mouseup', () => {
   window.setTimeout(() => {
     snapshotSelection();
+    if (state.mode === 'comment') {
+      addCommentFromSelection();
+      return;
+    }
     addHighlightFromSelection();
   }, 0);
 });
@@ -1712,7 +1850,7 @@ window.addEventListener('message', async (event) => {
     state.searchQuery = '';
     state.searchMatches = [];
     state.activeSearchMatchIndex = -1;
-    commentButtonEl.disabled = true;
+    setColorPopoverOpen(false);
     searchInputEl.value = '';
     updateSearchUI();
     setSidebarOpen(false);

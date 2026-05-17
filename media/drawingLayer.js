@@ -6,6 +6,20 @@ function pointInsideRect(point, rect, scaleX, scaleY) {
   return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
 }
 
+function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+  const projectionX = start.x + t * dx;
+  const projectionY = start.y + t * dy;
+  return Math.hypot(point.x - projectionX, point.y - projectionY);
+}
+
 function drawStroke(context, canvas, stroke) {
   if (!stroke.points.length) {
     return;
@@ -87,12 +101,26 @@ export function createDrawingLayer(pageEntries, options) {
 
       const scaleX = point.viewportWidth / Math.max(stroke.viewportWidth || point.viewportWidth, 1);
       const scaleY = point.viewportHeight / Math.max(stroke.viewportHeight || point.viewportHeight, 1);
-      const threshold = Math.max(stroke.width * ((scaleX + scaleY) / 2), 12);
+      const threshold = Math.max(stroke.width * ((scaleX + scaleY) / 2) * 1.5, 14);
 
-      for (const candidate of stroke.points) {
-        const dx = candidate.x * scaleX - point.x;
-        const dy = candidate.y * scaleY - point.y;
-        const distance = Math.hypot(dx, dy);
+      for (let index = 0; index < stroke.points.length; index += 1) {
+        const candidate = stroke.points[index];
+        const currentPoint = {
+          x: candidate.x * scaleX,
+          y: candidate.y * scaleY
+        };
+        const previous = stroke.points[index - 1];
+        const distance = previous
+          ? distanceToSegment(
+              point,
+              {
+                x: previous.x * scaleX,
+                y: previous.y * scaleY
+              },
+              currentPoint
+            )
+          : Math.hypot(currentPoint.x - point.x, currentPoint.y - point.y);
+
         if (distance <= threshold && distance < bestDistance) {
           bestStroke = stroke;
           bestDistance = distance;

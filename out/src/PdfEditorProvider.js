@@ -36,10 +36,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PdfEditorProvider = void 0;
 const path = __importStar(require("node:path"));
 const vscode = __importStar(require("vscode"));
+const constants_1 = require("./constants");
+const capabilities_1 = require("./features/capabilities");
+const messages_1 = require("./validation/messages");
 class PdfEditorProvider {
     context;
     saveManager;
-    static viewType = 'pdfAnnotator.editor';
+    static viewType = constants_1.PDF_STUDIO_VIEW_TYPE;
     constructor(context, saveManager) {
         this.context = context;
         this.saveManager = saveManager;
@@ -59,7 +62,11 @@ class PdfEditorProvider {
             localResourceRoots: [this.context.extensionUri]
         };
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
-        webviewPanel.webview.onDidReceiveMessage(async (message) => {
+        webviewPanel.webview.onDidReceiveMessage(async (rawMessage) => {
+            const message = (0, messages_1.parseWebviewMessage)(rawMessage);
+            if (!message) {
+                return;
+            }
             switch (message.type) {
                 case 'ready': {
                     await this.postInitialState(document.uri, webviewPanel.webview);
@@ -81,7 +88,8 @@ class PdfEditorProvider {
                 payload: {
                     fileName: path.basename(uri.fsPath),
                     pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
-                    annotations
+                    annotations,
+                    capabilities: (0, capabilities_1.createDefaultCapabilities)()
                 }
             };
             webview.postMessage(message);

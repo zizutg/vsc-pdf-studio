@@ -36,8 +36,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SaveManager = void 0;
 const fs = __importStar(require("node:fs/promises"));
 const pdf_lib_1 = require("pdf-lib");
-const ANNOTATION_DATA_KEY = 'PdfAnnotatorData';
-const BASE_PDF_KEY = 'PdfAnnotatorBase';
+const annotation_1 = require("../models/annotation");
+const constants_1 = require("../src/constants");
+const annotationDocument_1 = require("../src/validation/annotationDocument");
 class SaveManager {
     sessionBasePdf = new Map();
     sessionAnnotations = new Map();
@@ -53,7 +54,7 @@ class SaveManager {
         if (!this.sessionAnnotations.has(cacheKey)) {
             await this.loadSessionState(pdfUri);
         }
-        return structuredClone(this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument());
+        return structuredClone(this.sessionAnnotations.get(cacheKey) ?? (0, annotation_1.emptyAnnotationDocument)());
     }
     async save(pdfUri, annotations) {
         const cacheKey = pdfUri.toString();
@@ -157,12 +158,12 @@ class SaveManager {
                 });
             });
         }
-        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(ANNOTATION_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(annotations)));
+        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(annotations)));
         const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
             Type: 'EmbeddedFile'
         });
         const baseStreamRef = pdfDocument.context.register(baseStream);
-        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(BASE_PDF_KEY), baseStreamRef);
+        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY), baseStreamRef);
         const output = await pdfDocument.save();
         await fs.writeFile(pdfUri.fsPath, output);
         this.sessionAnnotations.set(cacheKey, structuredClone(annotations));
@@ -176,23 +177,23 @@ class SaveManager {
         const cacheKey = pdfUri.toString();
         const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
         const pdfDocument = await pdf_lib_1.PDFDocument.load(pdfBytes);
-        const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(BASE_PDF_KEY));
+        const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY));
         const basePdfBytes = embeddedBase instanceof pdf_lib_1.PDFRawStream ? (0, pdf_lib_1.decodePDFRawStream)(embeddedBase).decode() : pdfBytes;
         this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
-        const rawAnnotationData = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(ANNOTATION_DATA_KEY));
+        const rawAnnotationData = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY));
         const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString || rawAnnotationData instanceof pdf_lib_1.PDFString
             ? rawAnnotationData.decodeText()
             : null;
         if (!annotationJson) {
-            this.sessionAnnotations.set(cacheKey, emptyAnnotationDocument());
+            this.sessionAnnotations.set(cacheKey, (0, annotation_1.emptyAnnotationDocument)());
             return;
         }
         try {
             const parsed = JSON.parse(annotationJson);
-            this.sessionAnnotations.set(cacheKey, normalizeAnnotationDocument(parsed));
+            this.sessionAnnotations.set(cacheKey, (0, annotationDocument_1.sanitizeAnnotationDocument)(parsed));
         }
         catch {
-            this.sessionAnnotations.set(cacheKey, emptyAnnotationDocument());
+            this.sessionAnnotations.set(cacheKey, (0, annotation_1.emptyAnnotationDocument)());
         }
     }
 }
@@ -240,23 +241,5 @@ function wrapText(text, maxChars) {
         lines.push(currentLine);
     }
     return lines.length ? lines : [''];
-}
-function emptyAnnotationDocument() {
-    return {
-        version: 1,
-        updatedAt: new Date(0).toISOString(),
-        strokes: [],
-        highlights: [],
-        comments: []
-    };
-}
-function normalizeAnnotationDocument(value) {
-    return {
-        version: 1,
-        updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date(0).toISOString(),
-        strokes: Array.isArray(value.strokes) ? value.strokes : [],
-        highlights: Array.isArray(value.highlights) ? value.highlights : [],
-        comments: Array.isArray(value.comments) ? value.comments : []
-    };
 }
 //# sourceMappingURL=saveManager.js.map

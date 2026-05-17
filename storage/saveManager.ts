@@ -10,13 +10,9 @@ import {
   StandardFonts,
   rgb
 } from 'pdf-lib';
-import type {
-  AnnotationDocument,
-  AnnotationPoint
-} from '../models/annotation';
-
-const ANNOTATION_DATA_KEY = 'PdfAnnotatorData';
-const BASE_PDF_KEY = 'PdfAnnotatorBase';
+import { emptyAnnotationDocument, type AnnotationDocument, type AnnotationPoint } from '../models/annotation';
+import { PDF_STUDIO_BASE_KEY, PDF_STUDIO_DATA_KEY } from '../src/constants';
+import { sanitizeAnnotationDocument } from '../src/validation/annotationDocument';
 
 export class SaveManager {
   private readonly sessionBasePdf = new Map<string, Uint8Array>();
@@ -155,14 +151,14 @@ export class SaveManager {
     }
 
     pdfDocument.catalog.set(
-      PDFName.of(ANNOTATION_DATA_KEY),
+      PDFName.of(PDF_STUDIO_DATA_KEY),
       PDFHexString.fromText(JSON.stringify(annotations))
     );
     const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
       Type: 'EmbeddedFile'
     });
     const baseStreamRef = pdfDocument.context.register(baseStream);
-    pdfDocument.catalog.set(PDFName.of(BASE_PDF_KEY), baseStreamRef);
+    pdfDocument.catalog.set(PDFName.of(PDF_STUDIO_BASE_KEY), baseStreamRef);
 
     const output = await pdfDocument.save();
     await fs.writeFile(pdfUri.fsPath, output);
@@ -180,12 +176,12 @@ export class SaveManager {
     const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
     const pdfDocument = await PDFDocument.load(pdfBytes);
 
-    const embeddedBase = pdfDocument.catalog.lookup(PDFName.of(BASE_PDF_KEY));
+    const embeddedBase = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_BASE_KEY));
     const basePdfBytes =
       embeddedBase instanceof PDFRawStream ? decodePDFRawStream(embeddedBase).decode() : pdfBytes;
     this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
 
-    const rawAnnotationData = pdfDocument.catalog.lookup(PDFName.of(ANNOTATION_DATA_KEY));
+    const rawAnnotationData = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_DATA_KEY));
     const annotationJson =
       rawAnnotationData instanceof PDFHexString || rawAnnotationData instanceof PDFString
         ? rawAnnotationData.decodeText()
@@ -197,8 +193,8 @@ export class SaveManager {
     }
 
     try {
-      const parsed = JSON.parse(annotationJson) as AnnotationDocument;
-      this.sessionAnnotations.set(cacheKey, normalizeAnnotationDocument(parsed));
+      const parsed = JSON.parse(annotationJson) as unknown;
+      this.sessionAnnotations.set(cacheKey, sanitizeAnnotationDocument(parsed));
     } catch {
       this.sessionAnnotations.set(cacheKey, emptyAnnotationDocument());
     }
@@ -264,24 +260,4 @@ function wrapText(text: string, maxChars: number): string[] {
   }
 
   return lines.length ? lines : [''];
-}
-
-function emptyAnnotationDocument(): AnnotationDocument {
-  return {
-    version: 1,
-    updatedAt: new Date(0).toISOString(),
-    strokes: [],
-    highlights: [],
-    comments: []
-  };
-}
-
-function normalizeAnnotationDocument(value: Partial<AnnotationDocument>): AnnotationDocument {
-  return {
-    version: 1,
-    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date(0).toISOString(),
-    strokes: Array.isArray(value.strokes) ? value.strokes : [],
-    highlights: Array.isArray(value.highlights) ? value.highlights : [],
-    comments: Array.isArray(value.comments) ? value.comments : []
-  };
 }

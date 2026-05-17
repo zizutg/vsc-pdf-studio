@@ -1,23 +1,39 @@
 # PDF Studio
 
-VS Code extension scaffold for opening a PDF in a custom editor, drawing freehand annotations across multiple pages, and saving those annotations directly into the PDF after the user stops drawing.
+PDF Studio is a VS Code custom editor for reviewing and annotating PDF files without leaving the editor.
 
-## Current behavior
+![PDF Studio demo](demo.png)
 
-- Opens `*.pdf` files with a custom editor.
-- Renders all PDF pages in the webview using a vendored local `pdf.js` bundle.
-- Draws freehand annotations on a page overlay.
-- Auto-saves directly into the same PDF file for compatibility with other PDF readers.
+## Features
 
-## Notes
+- Opens `*.pdf` files inside a custom PDF editor in VS Code
+- Freehand annotation with color and width controls
+- Text selection, inline highlight, and comment workflows
+- Search, page navigation, and PDF outline/bookmark navigation
+- Undo and redo support
+- Auto-save directly back into the PDF file
 
-- The extension does not create sidecar JSON files or base-copy PDFs.
-- Saved annotations are flattened into the PDF and are not reloaded as editable strokes.
-- If you update `pdfjs-dist`, run `npm run sync:pdfjs` to refresh the vendored files in `media/libs/`.
+## How It Works
+
+- PDF pages are rendered in a local webview using vendored `pdf.js` assets
+- Annotations are embedded back into the PDF for compatibility with other PDF readers
+- Extension-managed annotation data is also embedded in the PDF so Studio can restore editable state on reopen
+
+## Current Limitations
+
+- The editor is optimized for review and markup workflows, not full PDF text editing
+- Saved comments/highlights are rendered into the PDF for external-reader compatibility
+- Comment/search/selection behavior depends on the embedded text layer of the source PDF; scanned image PDFs may not behave like text PDFs
 
 ## Development
 
 ```bash
 npm install
 npm run compile
+```
+
+If you update `pdfjs-dist`, refresh the vendored frontend assets with:
+
+```bash
+npm run sync:pdfjs
 ```

@@ -1,15 +1,14 @@
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { emptyAnnotationDocument, type AnnotationDocument } from '../models/annotation';
-import type {
-  ExtensionToWebviewMessage,
-  WebviewToExtensionMessage
-} from './messaging';
+import type { AnnotationDocument } from '../models/annotation';
+import { PDF_STUDIO_VIEW_TYPE } from './constants';
+import { createDefaultCapabilities } from './features/capabilities';
+import type { ExtensionToWebviewMessage } from './messaging';
+import { parseWebviewMessage } from './validation/messages';
 import { SaveManager } from '../storage/saveManager';
 
 export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
-  public static readonly viewType = 'pdfAnnotator.editor';
+  public static readonly viewType = PDF_STUDIO_VIEW_TYPE;
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -40,7 +39,12 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
-    webviewPanel.webview.onDidReceiveMessage(async (message: WebviewToExtensionMessage) => {
+    webviewPanel.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
+      const message = parseWebviewMessage(rawMessage);
+      if (!message) {
+        return;
+      }
+
       switch (message.type) {
         case 'ready': {
           await this.postInitialState(document.uri, webviewPanel.webview);
@@ -64,7 +68,8 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         payload: {
           fileName: path.basename(uri.fsPath),
           pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
-          annotations
+          annotations,
+          capabilities: createDefaultCapabilities()
         }
       };
 

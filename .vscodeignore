@@ -1,8 +1,12 @@
 .gitignore
 .vscode/**
 node_modules/**
+!node_modules/pdf-lib/**
+!node_modules/@pdf-lib/**
+!node_modules/pako/**
+!node_modules/tslib/**
 src/**
 models/**
 storage/**
 tsconfig.json
-README.md
+package-lock.json

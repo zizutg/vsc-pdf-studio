@@ -6,20 +6,38 @@
   "publisher": "zee",
   "icon": "media/icon.png",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zizutg/vsc-pdf-studio.git"
+  },
+  "homepage": "https://github.com/zizutg/vsc-pdf-studio#readme",
+  "bugs": {
+    "url": "https://github.com/zizutg/vsc-pdf-studio/issues"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "pdf",
+    "annotation",
+    "highlight",
+    "comments",
+    "review",
+    "document",
+    "editor",
+    "vscode"
+  ],
   "activationEvents": [
-    "onCustomEditor:pdfAnnotator.editor"
+    "onCustomEditor:pdfStudio.editor"
   ],
   "main": "./out/src/extension.js",
   "contributes": {
     "customEditors": [
       {
-        "viewType": "pdfAnnotator.editor",
+        "viewType": "pdfStudio.editor",
         "displayName": "PDF Studio",
         "selector": [
           {
@@ -34,6 +52,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "sync:pdfjs": "cp node_modules/pdfjs-dist/build/pdf.min.js media/libs/pdf.min.js && cp node_modules/pdfjs-dist/build/pdf.worker.min.js media/libs/pdf.worker.min.js && cp node_modules/pdfjs-dist/web/pdf_viewer.js media/libs/pdf_viewer.js",
+    "vscode:prepublish": "npm run compile",
     "package": "vscode-vsce package",
     "pretest": "npm run compile",
     "test": "echo \"No tests configured yet\""

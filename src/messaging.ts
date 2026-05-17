@@ -1,4 +1,5 @@
 import type { AnnotationDocument } from '../models/annotation';
+import type { CapabilitySnapshot } from './features/capabilities';
 
 export type ExtensionToWebviewMessage =
   | {
@@ -7,6 +8,7 @@ export type ExtensionToWebviewMessage =
         fileName: string;
         pdfBase64: string;
         annotations: AnnotationDocument;
+        capabilities: CapabilitySnapshot;
       };
     }
   | {

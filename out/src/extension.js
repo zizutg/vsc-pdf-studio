@@ -36,12 +36,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const constants_1 = require("./constants");
 const PdfEditorProvider_1 = require("./PdfEditorProvider");
 const saveManager_1 = require("../storage/saveManager");
 function activate(context) {
     const saveManager = new saveManager_1.SaveManager();
     const provider = new PdfEditorProvider_1.PdfEditorProvider(context, saveManager);
-    context.subscriptions.push(vscode.window.registerCustomEditorProvider(PdfEditorProvider_1.PdfEditorProvider.viewType, provider, {
+    context.subscriptions.push(vscode.window.registerCustomEditorProvider(constants_1.PDF_STUDIO_VIEW_TYPE, provider, {
         webviewOptions: {
             retainContextWhenHidden: true
         }

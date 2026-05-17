@@ -1,4 +1,4 @@
-# PDF Annotate
+# PDF Studio
 
 VS Code extension scaffold for opening a PDF in a custom editor, drawing freehand annotations across multiple pages, and saving those annotations directly into the PDF after the user stops drawing.
 

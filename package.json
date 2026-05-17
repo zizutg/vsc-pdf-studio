@@ -1,7 +1,7 @@
 {
-  "name": "vsc-pdf-annotate",
-  "displayName": "PDF Annotate",
-  "description": "Annotate PDF files in VS Code with automatic sidecar saves.",
+  "name": "vsc-pdf-studio",
+  "displayName": "PDF Studio",
+  "description": "Review, annotate, comment on, and navigate PDFs inside VS Code.",
   "version": "0.0.1",
   "publisher": "zee",
   "icon": "media/icon.png",
@@ -20,7 +20,7 @@
     "customEditors": [
       {
         "viewType": "pdfAnnotator.editor",
-        "displayName": "PDF Annotator",
+        "displayName": "PDF Studio",
         "selector": [
           {
             "filenamePattern": "*.pdf"

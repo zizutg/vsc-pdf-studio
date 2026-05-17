@@ -41,6 +41,19 @@ function drawStroke(context, canvas, stroke) {
   context.stroke();
 }
 
+function isStylusEraseEvent(event) {
+  if (event.pointerType !== 'pen') {
+    return false;
+  }
+
+  return (
+    event.button === 5 ||
+    (event.buttons & 32) === 32 ||
+    event.button === 2 ||
+    (event.buttons & 2) === 2
+  );
+}
+
 export function createDrawingLayer(pageEntries, options) {
   const state = {
     strokes: [],
@@ -88,6 +101,27 @@ export function createDrawingLayer(pageEntries, options) {
 
     state.currentStroke = null;
     redrawAll();
+  }
+
+  function eraseAtPoint(pageEntry, point) {
+    const targetStroke = findStrokeNearPoint(pageEntry.pageNumber, point);
+    if (targetStroke) {
+      state.strokes = state.strokes.filter((stroke) => stroke.id !== targetStroke.id);
+      options.onErase?.(structuredClone(targetStroke), structuredClone(state.strokes));
+      redrawAll();
+      return true;
+    }
+
+    const targetHighlight = findHighlightAtPoint(pageEntry.pageNumber, point);
+    if (targetHighlight) {
+      const remainingHighlights = (options.getHighlights?.() ?? []).filter(
+        (highlight) => highlight.id !== targetHighlight.id
+      );
+      options.onEraseHighlight?.(structuredClone(targetHighlight), structuredClone(remainingHighlights));
+      return true;
+    }
+
+    return false;
   }
 
   function findStrokeNearPoint(pageNumber, point) {
@@ -153,8 +187,27 @@ export function createDrawingLayer(pageEntries, options) {
   for (const pageEntry of pageEntries) {
     const canvas = pageEntry.drawingCanvas;
 
+    pageEntry.pageShell.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!isStylusEraseEvent(event)) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        const point = {
+          ...toPoint(canvas, event),
+          viewportWidth: canvas.width,
+          viewportHeight: canvas.height
+        };
+        eraseAtPoint(pageEntry, point);
+      },
+      true
+    );
+
     canvas.addEventListener('pointerdown', (event) => {
-      const mode = options.getMode();
+      const mode = isStylusEraseEvent(event) ? 'erase' : options.getMode();
       if (mode === 'select') {
         return;
       }
@@ -166,21 +219,7 @@ export function createDrawingLayer(pageEntries, options) {
           viewportWidth: canvas.width,
           viewportHeight: canvas.height
         };
-        const targetStroke = findStrokeNearPoint(pageEntry.pageNumber, point);
-        if (targetStroke) {
-          state.strokes = state.strokes.filter((stroke) => stroke.id !== targetStroke.id);
-          options.onErase?.(structuredClone(targetStroke), structuredClone(state.strokes));
-          redrawAll();
-          return;
-        }
-
-        const targetHighlight = findHighlightAtPoint(pageEntry.pageNumber, point);
-        if (targetHighlight) {
-          const remainingHighlights = (options.getHighlights?.() ?? []).filter(
-            (highlight) => highlight.id !== targetHighlight.id
-          );
-          options.onEraseHighlight?.(structuredClone(targetHighlight), structuredClone(remainingHighlights));
-        }
+        eraseAtPoint(pageEntry, point);
         return;
       }
 

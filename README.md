@@ -2,9 +2,9 @@
 
 PDF Studio is a VS Code custom editor for reviewing and annotating PDF files without leaving the editor.
 
-![PDF Studio demo](demo.png)
+![PDF Studio demo](https://raw.githubusercontent.com/zizutg/vsc-pdf-studio/master/demo.png)
 
-![PDF Studio workflow demo](demo.gif)
+![PDF Studio workflow demo](https://raw.githubusercontent.com/zizutg/vsc-pdf-studio/master/demo.gif)
 
 ## Features
 

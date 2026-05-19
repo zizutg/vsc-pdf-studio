@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.3
+
+- Reduced packaged extension size by trimming shipped runtime dependency files without changing functionality
+- Collapsed open comment views and cleared empty comment composers when switching to other tools
+
 ## 0.0.2
 
 - Improved default PDF text clarity on Retina/high-DPI displays

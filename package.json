@@ -1,8 +1,8 @@
 {
   "name": "vsc-pdf-studio",
   "displayName": "PDF Studio",
-  "description": "Review, annotate, comment on, and navigate PDFs inside VS Code.",
-  "version": "0.0.2",
+  "description": "Review, annotate, comment on, search, and navigate PDFs directly inside VS Code.",
+  "version": "0.0.3",
   "publisher": "ZelalemJembreYalew",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -18,10 +18,20 @@
     "vscode": "^1.90.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "keywords": [
     "pdf",
+    "pdf viewer",
+    "pdf editor",
+    "pdf annotation",
+    "pdf comments",
+    "pdf highlight",
+    "pdf search",
+    "pdf navigation",
+    "document review",
+    "document workflow",
     "annotation",
     "highlight",
     "comments",

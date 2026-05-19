@@ -1249,6 +1249,30 @@ function setColorPopoverOpen(nextOpen, owner = state.colorPopoverOwner ?? state.
   colorPopoverEl.style.setProperty('--popover-left', `${left}px`);
 }
 
+function collapseCommentsForModeChange(nextMode) {
+  if (nextMode === 'comment') {
+    return;
+  }
+
+  const hadExpandedComments = state.openCommentId !== null || state.showAllComments;
+  state.openCommentId = null;
+  state.showAllComments = false;
+  updateCommentViewsToggleState();
+
+  if (state.commentComposer) {
+    if (state.commentComposer.text.trim()) {
+      submitCommentComposer();
+    } else {
+      cancelCommentComposer();
+    }
+    return;
+  }
+
+  if (hadExpandedComments) {
+    renderComments(state.sessionAnnotations.comments);
+  }
+}
+
 function jumpToPage(pageNumber, outlineKey = null) {
   const targetPage = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
   if (!targetPage) {
@@ -1278,6 +1302,7 @@ function jumpToPage(pageNumber, outlineKey = null) {
 }
 
 function setMode(mode) {
+  collapseCommentsForModeChange(mode);
   state.mode = mode;
   setColorPopoverOpen(mode === 'highlight' || mode === 'annotate' || mode === 'comment', mode);
   updateInteractionMode();

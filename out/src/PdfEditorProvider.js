@@ -127,7 +127,6 @@ class PdfEditorProvider {
         const toWebviewUri = (segments) => webview
             .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, ...segments))
             .toString();
-        const indexHtmlPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'index.html');
         const html = [
             '<!DOCTYPE html>',
             '<html lang="en">',
@@ -143,7 +142,6 @@ class PdfEditorProvider {
             '<body>',
             '  <div id="app"></div>',
             `  <script nonce="${nonce}" type="module" src="${toWebviewUri(['media', 'main.js'])}"></script>`,
-            `  <!-- Source scaffold: ${indexHtmlPath.fsPath} -->`,
             '</body>',
             '</html>'
         ].join('\n');

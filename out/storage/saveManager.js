@@ -39,6 +39,7 @@ const pdf_lib_1 = require("pdf-lib");
 const annotation_1 = require("../models/annotation");
 const constants_1 = require("../src/constants");
 const annotationDocument_1 = require("../src/validation/annotationDocument");
+const PDF_STUDIO_COMMENT_KEY = pdf_lib_1.PDFName.of('PDFStudioComment');
 class SaveManager {
     sessionBasePdf = new Map();
     sessionAnnotations = new Map();
@@ -64,7 +65,6 @@ class SaveManager {
         }
         const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
         const pages = pdfDocument.getPages();
-        const noteFont = await pdfDocument.embedFont(pdf_lib_1.StandardFonts.Helvetica);
         for (const stroke of annotations.strokes) {
             const page = pages[stroke.page - 1];
             if (!page || stroke.points.length < 2) {
@@ -109,56 +109,13 @@ class SaveManager {
             if (!page || !comment.rects.length || !comment.text.trim()) {
                 continue;
             }
-            const anchorRect = comment.rects[0];
-            const scaleX = page.getWidth() / Math.max(comment.viewportWidth, 1);
-            const scaleY = page.getHeight() / Math.max(comment.viewportHeight, 1);
-            const markerSize = 14;
-            const markerX = (anchorRect.x + anchorRect.width) * scaleX + 4;
-            const markerY = page.getHeight() - anchorRect.y * scaleY - markerSize;
-            const calloutWidth = Math.min(page.getWidth() * 0.42, 180);
-            const fontSize = 9;
-            const lineHeight = 11;
-            const lines = wrapText(comment.text.trim(), 34).slice(0, 5);
-            const calloutHeight = Math.max(28, 12 + lines.length * lineHeight);
-            const calloutX = Math.min(Math.max(8, markerX + markerSize + 6), page.getWidth() - calloutWidth - 8);
-            const calloutY = Math.max(8, Math.min(page.getHeight() - calloutHeight - 8, markerY - 6));
-            page.drawRectangle({
-                x: markerX,
-                y: markerY,
-                width: markerSize,
-                height: markerSize,
-                color: toRgb(comment.color),
-                opacity: 0.9,
-                borderWidth: 0
-            });
-            page.drawText('C', {
-                x: markerX + 4,
-                y: markerY + 3,
-                size: 8,
-                font: noteFont,
-                color: (0, pdf_lib_1.rgb)(1, 1, 1)
-            });
-            page.drawRectangle({
-                x: calloutX,
-                y: calloutY,
-                width: calloutWidth,
-                height: calloutHeight,
-                color: (0, pdf_lib_1.rgb)(1, 0.988, 0.855),
-                opacity: 0.95,
-                borderColor: toRgb(comment.color),
-                borderWidth: 1
-            });
-            lines.forEach((line, index) => {
-                page.drawText(line, {
-                    x: calloutX + 8,
-                    y: calloutY + calloutHeight - 14 - index * lineHeight,
-                    size: fontSize,
-                    font: noteFont,
-                    color: (0, pdf_lib_1.rgb)(0.18, 0.18, 0.2)
-                });
-            });
+            addNativeCommentAnnotation(pdfDocument, page, comment);
         }
-        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(annotations)));
+        const storedAnnotations = {
+            ...annotations,
+            comments: []
+        };
+        pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(storedAnnotations)));
         const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
             Type: 'EmbeddedFile'
         });
@@ -184,16 +141,27 @@ class SaveManager {
         const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString || rawAnnotationData instanceof pdf_lib_1.PDFString
             ? rawAnnotationData.decodeText()
             : null;
+        const nativeComments = extractNativeComments(pdfDocument);
         if (!annotationJson) {
-            this.sessionAnnotations.set(cacheKey, (0, annotation_1.emptyAnnotationDocument)());
+            this.sessionAnnotations.set(cacheKey, {
+                ...(0, annotation_1.emptyAnnotationDocument)(),
+                comments: nativeComments
+            });
             return;
         }
         try {
             const parsed = JSON.parse(annotationJson);
-            this.sessionAnnotations.set(cacheKey, (0, annotationDocument_1.sanitizeAnnotationDocument)(parsed));
+            const sanitized = (0, annotationDocument_1.sanitizeAnnotationDocument)(parsed);
+            this.sessionAnnotations.set(cacheKey, {
+                ...sanitized,
+                comments: mergeComments(sanitized.comments, nativeComments)
+            });
         }
         catch {
-            this.sessionAnnotations.set(cacheKey, (0, annotation_1.emptyAnnotationDocument)());
+            this.sessionAnnotations.set(cacheKey, {
+                ...(0, annotation_1.emptyAnnotationDocument)(),
+                comments: nativeComments
+            });
         }
     }
 }
@@ -222,24 +190,185 @@ function toRgb(hex) {
     const blue = (value & 0xff) / 255;
     return (0, pdf_lib_1.rgb)(red, green, blue);
 }
-function wrapText(text, maxChars) {
-    const words = text.replace(/\s+/g, ' ').trim().split(' ');
-    const lines = [];
-    let currentLine = '';
-    for (const word of words) {
-        const candidate = currentLine ? `${currentLine} ${word}` : word;
-        if (candidate.length <= maxChars) {
-            currentLine = candidate;
+function addNativeCommentAnnotation(pdfDocument, page, comment) {
+    const anchorRect = comment.rects[comment.rects.length - 1];
+    const scaleX = page.getWidth() / Math.max(comment.viewportWidth, 1);
+    const scaleY = page.getHeight() / Math.max(comment.viewportHeight, 1);
+    const color = toRgb(comment.color);
+    const iconSize = Math.max(14, Math.min(18, 14 * ((scaleX + scaleY) / 2)));
+    const pageWidth = page.getWidth();
+    const pageHeight = page.getHeight();
+    const x = clamp((anchorRect.x + anchorRect.width) * scaleX + 4, 8, pageWidth - iconSize - 8);
+    const yTop = clamp(pageHeight - anchorRect.y * scaleY + 2, iconSize + 8, pageHeight - 8);
+    const rect = [x, yTop - iconSize, x + iconSize, yTop];
+    const annotation = pdfDocument.context.obj({
+        Type: pdf_lib_1.PDFName.of('Annot'),
+        Subtype: pdf_lib_1.PDFName.of('Text'),
+        Rect: pdfDocument.context.obj(rect),
+        Contents: pdf_lib_1.PDFHexString.fromText(comment.text.trim()),
+        Name: pdf_lib_1.PDFName.of('Comment'),
+        NM: pdf_lib_1.PDFHexString.fromText(comment.id),
+        T: pdf_lib_1.PDFHexString.fromText('PDF Studio'),
+        M: pdf_lib_1.PDFString.of(toPdfDate(new Date())),
+        C: pdfDocument.context.obj([color.red, color.green, color.blue]),
+        Open: false,
+        F: 4
+    });
+    annotation.set(PDF_STUDIO_COMMENT_KEY, pdf_lib_1.PDFHexString.fromText(JSON.stringify({
+        id: comment.id,
+        color: comment.color,
+        viewportWidth: comment.viewportWidth,
+        viewportHeight: comment.viewportHeight,
+        rects: comment.rects
+    })));
+    const annotationRef = pdfDocument.context.register(annotation);
+    page.node.addAnnot(annotationRef);
+}
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+function toPdfDate(date) {
+    const pad = (value) => String(value).padStart(2, '0');
+    return `D:${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
+}
+function extractNativeComments(pdfDocument) {
+    const comments = [];
+    pdfDocument.getPages().forEach((page, pageIndex) => {
+        const annots = page.node.Annots();
+        if (!annots) {
+            return;
+        }
+        for (let index = 0; index < annots.size(); index += 1) {
+            const annotation = annots.lookupMaybe(index, pdf_lib_1.PDFDict);
+            if (!annotation) {
+                continue;
+            }
+            const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName);
+            if (subtype?.decodeText() !== 'Text') {
+                continue;
+            }
+            const contents = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('Contents'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            if (!contents.trim()) {
+                continue;
+            }
+            const rect = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)?.asRectangle();
+            if (!rect) {
+                continue;
+            }
+            const nm = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            const colorArray = annotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray);
+            const color = colorArray ? colorArrayToHex(colorArray) : '#f97316';
+            const pageWidth = page.getWidth();
+            const pageHeight = page.getHeight();
+            const studioData = decodeStudioCommentPayload(annotation.lookupMaybe(PDF_STUDIO_COMMENT_KEY, pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            comments.push({
+                id: studioData?.id || nm || `native-${pageIndex + 1}-${Math.round(rect.x)}-${Math.round(rect.y)}-${index}`,
+                color: studioData?.color || color,
+                page: pageIndex + 1,
+                viewportWidth: studioData?.viewportWidth || pageWidth,
+                viewportHeight: studioData?.viewportHeight || pageHeight,
+                rects: studioData?.rects.length
+                    ? studioData.rects
+                    : [
+                        {
+                            x: rect.x,
+                            y: pageHeight - rect.y - rect.height,
+                            width: rect.width,
+                            height: rect.height
+                        }
+                    ],
+                text: contents.trim()
+            });
+        }
+    });
+    return comments;
+}
+function mergeComments(studioComments, nativeComments) {
+    if (!nativeComments.length) {
+        return studioComments;
+    }
+    const merged = new Map();
+    for (const comment of studioComments) {
+        merged.set(comment.id, comment);
+    }
+    for (const nativeComment of nativeComments) {
+        const existing = merged.get(nativeComment.id);
+        if (existing) {
+            merged.set(nativeComment.id, {
+                ...existing,
+                text: nativeComment.text
+            });
             continue;
         }
-        if (currentLine) {
-            lines.push(currentLine);
+        merged.set(nativeComment.id, nativeComment);
+    }
+    return Array.from(merged.values());
+}
+function decodePdfText(value) {
+    return value ? value.decodeText() : '';
+}
+function decodeStudioCommentPayload(value) {
+    if (!value) {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(value.decodeText());
+        if (!isObject(parsed)) {
+            return null;
         }
-        currentLine = word;
+        const rects = sanitizeRectsForCommentPayload(parsed.rects);
+        if (!rects.length) {
+            return null;
+        }
+        return {
+            id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : crypto.randomUUID(),
+            color: typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color) ? parsed.color : '#f97316',
+            viewportWidth: typeof parsed.viewportWidth === 'number' && Number.isFinite(parsed.viewportWidth) && parsed.viewportWidth > 0
+                ? parsed.viewportWidth
+                : 1,
+            viewportHeight: typeof parsed.viewportHeight === 'number' &&
+                Number.isFinite(parsed.viewportHeight) &&
+                parsed.viewportHeight > 0
+                ? parsed.viewportHeight
+                : 1,
+            rects
+        };
     }
-    if (currentLine) {
-        lines.push(currentLine);
+    catch {
+        return null;
     }
-    return lines.length ? lines : [''];
+}
+function colorArrayToHex(colorArray) {
+    const components = colorArray
+        .asArray()
+        .slice(0, 3)
+        .map((component) => ('asNumber' in component && typeof component.asNumber === 'function' ? component.asNumber() : 0));
+    const [red = 0.976, green = 0.451, blue = 0.086] = components.map((component) => Math.round(clamp(component, 0, 1) * 255));
+    return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue
+        .toString(16)
+        .padStart(2, '0')}`;
+}
+function sanitizeRectsForCommentPayload(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((rect) => {
+        if (!isObject(rect)) {
+            return null;
+        }
+        const x = typeof rect.x === 'number' && Number.isFinite(rect.x) ? rect.x : null;
+        const y = typeof rect.y === 'number' && Number.isFinite(rect.y) ? rect.y : null;
+        const width = typeof rect.width === 'number' && Number.isFinite(rect.width) ? rect.width : null;
+        const height = typeof rect.height === 'number' && Number.isFinite(rect.height) ? rect.height : null;
+        if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) {
+            return null;
+        }
+        return { x, y, width, height };
+    })
+        .filter((rect) => rect !== null);
+}
+function isObject(value) {
+    return typeof value === 'object' && value !== null;
 }
 //# sourceMappingURL=saveManager.js.map

@@ -46,16 +46,36 @@ body {
 }
 
 .toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 4px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+.toolbar-start,
+.toolbar-end {
+  display: inline-flex;
+  align-items: center;
+}
+
+.toolbar-center {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.toolbar-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .badge {
@@ -72,11 +92,13 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .toolbar-label {
   font-size: 13px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .toolbar input[type='color'],
@@ -94,11 +116,13 @@ body {
 .zoom-controls button,
 #undo-button,
 #comment-button,
+#comment-views-toggle,
 .redo-button,
 #redo-button,
 .mode-button,
 #sidebar-toggle,
-#search-button {
+#search-button,
+#layout-toggle {
   border: 1px solid var(--border);
   background: var(--panel-2);
   display: inline-flex;
@@ -109,11 +133,13 @@ body {
 .zoom-controls button,
 #undo-button,
 #comment-button,
+#comment-views-toggle,
 .redo-button,
 #redo-button,
 .mode-button,
 #sidebar-toggle,
-#search-button {
+#search-button,
+#layout-toggle {
   width: 32px;
   height: 32px;
   border-radius: 10px;
@@ -123,10 +149,12 @@ body {
 
 #undo-button,
 #comment-button,
+#comment-views-toggle,
 #redo-button,
 .mode-button,
 #sidebar-toggle,
-#search-button {
+#search-button,
+#layout-toggle {
   width: 34px;
   padding: 0;
 }
@@ -264,8 +292,16 @@ body {
   display: none;
 }
 
+.comment-popover-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .mode-button.is-active,
-#comment-button.is-active {
+#comment-button.is-active,
+#comment-views-toggle.is-active,
+#layout-toggle.is-active {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
@@ -290,26 +326,36 @@ body {
   color: color-mix(in srgb, var(--text) 74%, #60a5fa);
 }
 
+#comment-views-toggle {
+  color: color-mix(in srgb, var(--text) 76%, #38bdf8);
+}
+
 #undo-button,
 #redo-button,
 #menu-button,
 .zoom-controls button,
 #sidebar-toggle,
-#search-button {
+#search-button,
+#comment-views-toggle,
+#layout-toggle {
   color: color-mix(in srgb, var(--text) 88%, var(--muted));
 }
 
 .mode-button.is-active,
 #comment-button.is-active,
+#comment-views-toggle.is-active,
 #comment-button:hover,
+#comment-views-toggle:hover,
 #search-button:hover,
+#layout-toggle:hover,
 #undo-button:hover,
 #redo-button:hover,
 #menu-button:hover,
 .zoom-controls button:hover,
 #sidebar-toggle:hover,
 #sidebar-toggle.is-active,
-#search-button.is-active {
+#search-button.is-active,
+#layout-toggle.is-active {
   color: var(--text);
 }
 
@@ -328,8 +374,10 @@ body {
 
 #undo-button:disabled,
 #comment-button:disabled,
+#comment-views-toggle:disabled,
 #redo-button:disabled,
-#search-button:disabled {
+#search-button:disabled,
+#layout-toggle:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -338,6 +386,18 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.comment-popover-controls #comment-views-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .color-swatch {
@@ -562,6 +622,12 @@ body {
   will-change: transform;
 }
 
+#pages.is-double {
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  align-items: start;
+}
+
 #pages.is-zooming {
   pointer-events: none;
 }
@@ -571,6 +637,264 @@ body {
   width: fit-content;
   margin: 0 auto;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.45);
+}
+
+#pages.is-double .page-shell {
+  margin: 0;
+}
+
+@media (max-width: 1440px) {
+  .toolbar {
+    gap: 3px;
+    padding: 11px 14px;
+  }
+
+  .toolbar-center,
+  .toolbar-start,
+  .toolbar-end,
+  .zoom-controls,
+  .mode-toggle {
+    gap: 3px;
+  }
+
+  .zoom-controls button,
+  #undo-button,
+  #comment-button,
+  #comment-views-toggle,
+  .redo-button,
+  #redo-button,
+  .mode-button,
+  #sidebar-toggle,
+  #search-button,
+  #layout-toggle,
+  #menu-button {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+  }
+
+  .toolbar-icon {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+  }
+
+  #menu-button .toolbar-icon {
+    width: 15px;
+    height: 15px;
+    flex-basis: 15px;
+  }
+
+  .toolbar select,
+  .toolbar input[type='color'],
+  .toolbar input[type='number'] {
+    min-height: 30px;
+    padding: 4px 8px;
+    border-radius: 9px;
+  }
+
+  #page-input {
+    width: 34px;
+  }
+}
+
+@media (max-width: 1320px) {
+  .toolbar {
+    gap: 3px;
+    padding: 10px 12px;
+  }
+
+  .toolbar-center,
+  .toolbar-start,
+  .toolbar-end,
+  .zoom-controls,
+  .mode-toggle {
+    gap: 3px;
+  }
+
+  .zoom-controls button,
+  #undo-button,
+  #comment-button,
+  #comment-views-toggle,
+  .redo-button,
+  #redo-button,
+  .mode-button,
+  #sidebar-toggle,
+  #search-button,
+  #layout-toggle,
+  #menu-button {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .toolbar-icon {
+    width: 14px;
+    height: 14px;
+    flex-basis: 14px;
+  }
+
+  #menu-button .toolbar-icon {
+    width: 14px;
+    height: 14px;
+    flex-basis: 14px;
+  }
+
+  .toolbar select,
+  .toolbar input[type='color'],
+  .toolbar input[type='number'] {
+    min-height: 30px;
+    padding: 4px 8px;
+    border-radius: 9px;
+  }
+
+  #page-input {
+    width: 32px;
+  }
+}
+
+@media (max-width: 1160px) {
+  .toolbar {
+    gap: 2px;
+    padding: 9px 11px;
+  }
+
+  .toolbar-center,
+  .toolbar-start,
+  .toolbar-end,
+  .zoom-controls,
+  .mode-toggle {
+    gap: 2px;
+  }
+
+  .zoom-controls button,
+  #undo-button,
+  #comment-button,
+  #comment-views-toggle,
+  .redo-button,
+  #redo-button,
+  .mode-button,
+  #sidebar-toggle,
+  #search-button,
+  #layout-toggle,
+  #menu-button {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+  }
+
+  .toolbar-icon {
+    width: 14px;
+    height: 14px;
+    flex-basis: 14px;
+  }
+
+  #menu-button .toolbar-icon {
+    width: 14px;
+    height: 14px;
+    flex-basis: 14px;
+  }
+
+  .toolbar select,
+  .toolbar input[type='color'],
+  .toolbar input[type='number'] {
+    min-height: 29px;
+    padding: 4px 7px;
+    border-radius: 8px;
+  }
+
+  #page-input {
+    width: 31px;
+  }
+}
+
+@media (max-width: 1020px) {
+  .toolbar {
+    gap: 2px;
+    padding: 8px 10px;
+  }
+
+  .toolbar-center,
+  .toolbar-start,
+  .toolbar-end,
+  .zoom-controls,
+  .mode-toggle {
+    gap: 2px;
+  }
+
+  .zoom-controls button,
+  #undo-button,
+  #comment-button,
+  #comment-views-toggle,
+  .redo-button,
+  #redo-button,
+  .mode-button,
+  #sidebar-toggle,
+  #search-button,
+  #layout-toggle,
+  #menu-button {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+  }
+
+  .toolbar-icon {
+    width: 13px;
+    height: 13px;
+    flex-basis: 13px;
+  }
+
+  #menu-button .toolbar-icon {
+    width: 13px;
+    height: 13px;
+    flex-basis: 13px;
+  }
+
+  .toolbar select,
+  .toolbar input[type='color'],
+  .toolbar input[type='number'] {
+    min-height: 27px;
+    padding: 3px 6px;
+    border-radius: 7px;
+  }
+
+  #page-input {
+    width: 30px;
+  }
+}
+
+@media (max-width: 680px) {
+  .toolbar {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'start top end'
+      'bottom bottom bottom';
+    row-gap: 6px;
+  }
+
+  .toolbar-start {
+    grid-area: start;
+  }
+
+  .toolbar-center {
+    display: contents;
+  }
+
+  .toolbar-end {
+    grid-area: end;
+    justify-self: end;
+  }
+
+  .toolbar-row-primary {
+    grid-area: top;
+    justify-self: center;
+  }
+
+  .toolbar-row-secondary {
+    grid-area: bottom;
+    justify-self: center;
+    flex-wrap: wrap;
+  }
 }
 
 .pdf-canvas,
@@ -681,14 +1005,24 @@ body {
 }
 
 .comment-popup-actions button {
-  min-height: 20px;
-  padding: 0 6px;
+  width: 15px;
+  min-height: 15px;
+  padding: 1.5px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   background: var(--comment-accent, var(--panel-2));
   color: var(--vscode-button-foreground, #fff);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.comment-popup-actions button .toolbar-icon {
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
 }
 
 .comment-composer {
@@ -731,15 +1065,15 @@ body {
 }
 
 .comment-actions button {
-  width: 24px;
-  min-height: 24px;
-  padding: 0;
+  width: 15px;
+  min-height: 15px;
+  padding: 1.5px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 5px;
   background: var(--comment-accent, var(--bg));
   color: var(--vscode-button-foreground, #fff);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

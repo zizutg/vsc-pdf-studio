@@ -118,8 +118,6 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, ...segments))
         .toString();
 
-    const indexHtmlPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'index.html');
-
     const html = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -135,7 +133,6 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
       '<body>',
       '  <div id="app"></div>',
       `  <script nonce="${nonce}" type="module" src="${toWebviewUri(['media', 'main.js'])}"></script>`,
-      `  <!-- Source scaffold: ${indexHtmlPath.fsPath} -->`,
       '</body>',
       '</html>'
     ].join('\n');

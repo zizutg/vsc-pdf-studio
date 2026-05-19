@@ -25,6 +25,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: resolvedScale });
     const unscaledViewport = page.getViewport({ scale: 1 });
+    const outputScale = globalThis.devicePixelRatio || 1;
     const pageShell = document.createElement('div');
     const pdfCanvas = document.createElement('canvas');
     const highlightLayer = document.createElement('div');
@@ -46,8 +47,8 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     pageShell.style.width = `${viewport.width}px`;
     pageShell.style.height = `${viewport.height}px`;
 
-    pdfCanvas.width = viewport.width;
-    pdfCanvas.height = viewport.height;
+    pdfCanvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+    pdfCanvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
     drawingCanvas.width = viewport.width;
     drawingCanvas.height = viewport.height;
     pdfCanvas.style.width = `${viewport.width}px`;
@@ -60,9 +61,11 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     pageShell.append(pdfCanvas, highlightLayer, searchLayer, textLayer, commentLayer, drawingCanvas);
     fragment.append(pageShell);
 
+    const pdfContext = pdfCanvas.getContext('2d');
     await page.render({
-      canvasContext: pdfCanvas.getContext('2d'),
-      viewport
+      canvasContext: pdfContext,
+      viewport,
+      transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
     }).promise;
 
     const thumbnailCanvas = document.createElement('canvas');
@@ -230,13 +233,18 @@ async function buildOutline(pdf) {
 }
 
 function resolveScale(zoomConfig, workspaceSize, basePageSize) {
+  const columnCount = zoomConfig.layout === 'double' ? 2 : 1;
+  const interPageGap = columnCount > 1 ? 24 : 0;
+  const availableWidth = Math.max(240, workspaceSize.width - 24);
+  const columnWidth = Math.max(120, (availableWidth - interPageGap) / columnCount);
+
   switch (zoomConfig.mode) {
     case 'page-width': {
-      return Math.max(0.5, (workspaceSize.width - 24) / Math.max(basePageSize.width, 1));
+      return Math.max(0.5, columnWidth / Math.max(basePageSize.width, 1));
     }
     case 'page-fit':
     case 'automatic': {
-      const fitWidth = (workspaceSize.width - 24) / Math.max(basePageSize.width, 1);
+      const fitWidth = columnWidth / Math.max(basePageSize.width, 1);
       const fitHeight = (workspaceSize.height - 24) / Math.max(basePageSize.height, 1);
       return Math.max(0.5, Math.min(fitWidth, fitHeight));
     }

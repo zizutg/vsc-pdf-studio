@@ -4,6 +4,7 @@ import { renderPdf } from './pdfRenderer.js';
 
 const vscode = acquireVsCodeApi();
 const app = document.querySelector('#app');
+const MAX_HISTORY_ENTRIES = 30;
 
 function createLucideIcon(paths, attrs = '') {
   return `
@@ -25,7 +26,12 @@ const icons = {
   comment: createLucideIcon(
     '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h8" /><path d="M8 7h6" />'
   ),
+  commentsExpanded: createLucideIcon(
+    '<path d="M4 5h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8l-4 4z" /><path d="M14 9h5a2 2 0 0 1 2 2v8l-3-3h-4" />'
+  ),
   search: createLucideIcon('<circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />'),
+  layoutDouble: createLucideIcon('<rect x="3" y="5" width="7" height="14" rx="1.5" /><rect x="14" y="5" width="7" height="14" rx="1.5" />'),
+  layoutSingle: createLucideIcon('<rect x="6" y="5" width="12" height="14" rx="1.5" />'),
   pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
   eraser: createLucideIcon(
     '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
@@ -56,6 +62,7 @@ const state = {
   zoomMode: 'automatic',
   zoom: 1.25,
   renderedZoom: 1.25,
+  pageLayout: 'single',
   currentPage: 1,
   totalPages: 0,
   color: '#ef4444',
@@ -74,6 +81,7 @@ const state = {
   history: [],
   historyIndex: 0,
   openCommentId: null,
+  showAllComments: false,
   commentComposer: null,
   selectionSnapshot: null,
   selectionAction: null,
@@ -93,79 +101,89 @@ const state = {
 
 app.innerHTML = `
   <div class="toolbar">
-    <button type="button" id="sidebar-toggle" aria-label="Toggle navigation" title="Toggle navigation">${icons.sidebar}</button>
-    <label>
-      Page
-      <input id="page-input" type="number" min="1" value="1" />
-      <span class="toolbar-label" id="page-total">/ 1</span>
-    </label>
-    <div class="zoom-controls">
-      <button type="button" id="zoom-out" aria-label="Zoom out">${icons.minus}</button>
-      <select id="zoom-preset">
-        <option value="automatic">Auto</option>
-        <option value="actual-size">Actual Size</option>
-        <option value="page-fit">Page Fit</option>
-        <option value="page-width">Page Width</option>
-        <option value="0.5">50%</option>
-        <option value="0.75">75%</option>
-        <option value="1">100%</option>
-        <option value="1.25">125%</option>
-        <option value="1.5">150%</option>
-        <option value="2">200%</option>
-        <option value="3">300%</option>
-        <option value="4">400%</option>
-        <option value="10">1000%</option>
-        <option value="custom">Custom</option>
-      </select>
-      <button type="button" id="zoom-in" aria-label="Zoom in">${icons.plus}</button>
+    <div class="toolbar-start">
+      <button type="button" id="sidebar-toggle" aria-label="Toggle navigation" title="Toggle navigation">${icons.sidebar}</button>
     </div>
-    <div class="mode-wrap">
-      <div class="mode-toggle" id="mode-toggle">
-        <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
-        <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
-        <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
-        <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
-      </div>
-    </div>
-    <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
-    <div class="color-popover" id="color-popover" hidden>
-      <div class="color-palette" id="color-palette">
-        <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
-        <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
-        <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
-        <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
-        <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
-      </div>
-    </div>
-    <div class="search-wrap">
-      <button type="button" id="search-button" aria-label="Search document" title="Search document">${icons.search}</button>
-      <div class="search-panel" id="search-panel" hidden>
-        <input id="search-input" type="search" placeholder="Search" spellcheck="false" />
-        <span class="search-count" id="search-count">0 / 0</span>
-        <button type="button" id="search-prev" aria-label="Previous result" title="Previous">${icons.chevronLeft}</button>
-        <button type="button" id="search-next" aria-label="Next result" title="Next">${icons.chevronRight}</button>
-        <button type="button" id="search-close" aria-label="Close search" title="Close">${icons.close}</button>
-      </div>
-    </div>
-    <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
-    <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
-    <div class="menu-wrap">
-      <button type="button" id="menu-button" aria-label="More tools" title="More tools">${icons.menu}</button>
-      <div class="menu-panel" id="menu-panel" hidden>
+    <div class="toolbar-center">
+      <div class="toolbar-row toolbar-row-primary">
         <label>
-          Custom Color
-          <input id="stroke-color" type="color" value="#ef4444" />
+          <input id="page-input" type="number" min="1" value="1" aria-label="Page number" title="Page number" />
+          <span class="toolbar-label" id="page-total">/ 1</span>
         </label>
-        <label>
-          Width
-          <select id="stroke-width">
-            <option value="1">1 pt</option>
-            <option value="2">2 pt</option>
-            <option value="3" selected>3 pt</option>
-            <option value="4">4 pt</option>
-            <option value="6">6 pt</option>
+        <div class="zoom-controls">
+          <button type="button" id="zoom-out" aria-label="Zoom out">${icons.minus}</button>
+          <select id="zoom-preset">
+            <option value="automatic">Auto</option>
+            <option value="actual-size">Actual Size</option>
+            <option value="page-fit">Page Fit</option>
+            <option value="page-width">Page Width</option>
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1">100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+            <option value="custom">Custom</option>
           </select>
-        </label>
+          <button type="button" id="zoom-in" aria-label="Zoom in">${icons.plus}</button>
+        </div>
+        <button type="button" id="layout-toggle" aria-label="Switch to two-page view" title="Switch to two-page view">${icons.layoutDouble}</button>
+      </div>
+      <div class="toolbar-row toolbar-row-secondary">
+        <div class="mode-wrap">
+          <div class="mode-toggle" id="mode-toggle">
+            <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
+            <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
+            <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
+            <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
+          </div>
+        </div>
+        <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
+        <button type="button" id="comment-views-toggle" aria-label="Show all comments" title="Show all comments">${icons.commentsExpanded}</button>
+        <div class="color-popover" id="color-popover" hidden>
+          <div class="comment-popover-controls">
+            <div class="color-palette" id="color-palette">
+              <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
+              <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
+              <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
+              <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
+              <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
+            </div>
+          </div>
+        </div>
+        <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
+        <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
+        <div class="search-wrap">
+          <button type="button" id="search-button" aria-label="Search document" title="Search document">${icons.search}</button>
+          <div class="search-panel" id="search-panel" hidden>
+            <input id="search-input" type="search" placeholder="Search" spellcheck="false" />
+            <span class="search-count" id="search-count">0 / 0</span>
+            <button type="button" id="search-prev" aria-label="Previous result" title="Previous">${icons.chevronLeft}</button>
+            <button type="button" id="search-next" aria-label="Next result" title="Next">${icons.chevronRight}</button>
+            <button type="button" id="search-close" aria-label="Close search" title="Close">${icons.close}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar-end">
+      <div class="menu-wrap">
+        <button type="button" id="menu-button" aria-label="More tools" title="More tools">${icons.menu}</button>
+        <div class="menu-panel" id="menu-panel" hidden>
+          <label>
+            Color
+            <input id="stroke-color" type="color" value="#ef4444" />
+          </label>
+          <label>
+            Width
+            <select id="stroke-width">
+              <option value="1">1 pt</option>
+              <option value="2">2 pt</option>
+              <option value="3" selected>3 pt</option>
+              <option value="4">4 pt</option>
+              <option value="6">6 pt</option>
+            </select>
+          </label>
+        </div>
       </div>
     </div>
   </div>
@@ -204,11 +222,13 @@ const pageTotalEl = document.querySelector('#page-total');
 const zoomInEl = document.querySelector('#zoom-in');
 const zoomOutEl = document.querySelector('#zoom-out');
 const zoomPresetEl = document.querySelector('#zoom-preset');
+const layoutToggleEl = document.querySelector('#layout-toggle');
 const modeToggleEl = document.querySelector('#mode-toggle');
 const colorPopoverEl = document.querySelector('#color-popover');
 const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
+const commentViewsToggleEl = document.querySelector('#comment-views-toggle');
 const searchButtonEl = document.querySelector('#search-button');
 const searchPanelEl = document.querySelector('#search-panel');
 const searchInputEl = document.querySelector('#search-input');
@@ -239,6 +259,8 @@ state.history = [structuredClone(state.sessionAnnotations)];
 function cloneAnnotations(annotations) {
   return structuredClone(annotations);
 }
+
+updateCommentViewsToggleState();
 
 function findTextNode(node) {
   if (!node) {
@@ -756,8 +778,6 @@ function renderComments(comments) {
       );
       const anchorRight = (anchor.x + anchor.width) * scaleX;
       const anchorTop = firstRect.y * scaleY;
-      const anchorBottom = firstRect.y * scaleY + firstRect.height * scaleY;
-
       const marker = document.createElement('button');
       marker.type = 'button';
       marker.className = 'comment-marker';
@@ -774,35 +794,39 @@ function renderComments(comments) {
             cancelCommentComposer();
           }
         }
-        if (state.openCommentId !== comment.id) {
-          ensureRightDockVisible(comment.page, 260, 10);
+        if (state.showAllComments) {
+          return;
         }
         state.openCommentId = state.openCommentId === comment.id ? null : comment.id;
         renderComments(state.sessionAnnotations.comments);
       });
       pageEntry.commentLayer.append(marker);
 
-      if (state.openCommentId === comment.id) {
+      if (state.showAllComments || state.openCommentId === comment.id) {
         const popupWidth = 260;
         const popupHeight = 72;
         const popupGap = 10;
-        const rightDockLeft = pageEntry.width + popupGap;
-        const popupTop = Math.min(
-          pageEntry.height - popupHeight,
-          Math.max(2, anchorTop - 2)
-        );
+        const placement = getCommentOverlayPlacement({
+          pageEntry,
+          overlayWidth: popupWidth,
+          overlayHeight: popupHeight,
+          gap: popupGap,
+          anchorRight,
+          anchorTop,
+          markerAnchorX: markerLeft + markerSize
+        });
         const connector = document.createElement('div');
         connector.className = 'comment-connector';
-        connector.style.left = `${markerLeft + markerSize}px`;
+        connector.style.left = `${placement.connectorLeft}px`;
         connector.style.top = `${markerTop + markerSize / 2}px`;
-        connector.style.width = `${Math.max(8, rightDockLeft + popupWidth / 2 - (markerLeft + markerSize))}px`;
+        connector.style.width = `${placement.connectorWidth}px`;
         connector.style.setProperty('--comment-accent', comment.color);
         pageEntry.commentLayer.append(connector);
 
         const popup = document.createElement('div');
         popup.className = 'comment-popup';
-        popup.style.left = `${rightDockLeft}px`;
-        popup.style.top = `${popupTop}px`;
+        popup.style.left = `${placement.left}px`;
+        popup.style.top = `${placement.top}px`;
         popup.style.borderColor = comment.color;
         popup.style.setProperty('--comment-accent', comment.color);
         popup.innerHTML = `
@@ -815,7 +839,8 @@ function renderComments(comments) {
         popup.querySelector('.comment-popup-text').textContent = comment.text;
         popup.querySelector('.comment-edit').addEventListener('click', () => {
           state.openCommentId = null;
-          ensureRightDockVisible(comment.page, 210, 10);
+          state.showAllComments = false;
+          updateCommentViewsToggleState();
           state.commentComposer = {
             id: comment.id,
             page: comment.page,
@@ -848,23 +873,27 @@ function renderComments(comments) {
       const anchorTop = anchor.y * scaleY;
       const markerAnchorLeft = Math.max(2, (anchor.x + anchor.width) * scaleX + 1);
       const markerAnchorTop = Math.max(2, anchor.y * scaleY + Math.max(anchor.height * scaleY * 0.5, 4));
+      const placement = getCommentOverlayPlacement({
+        pageEntry,
+        overlayWidth: composerWidth,
+        overlayHeight: composerHeight,
+        gap: composerGap,
+        anchorRight: (anchor.x + anchor.width) * scaleX,
+        anchorTop,
+        markerAnchorX: markerAnchorLeft
+      });
       const composer = document.createElement('div');
       composer.className = 'comment-composer';
-      const rightDockLeft = pageEntry.width + composerGap;
-      const composerTop = Math.min(
-        pageEntry.height - composerHeight,
-        Math.max(2, anchorTop - 2)
-      );
       const connector = document.createElement('div');
       connector.className = 'comment-connector';
-      connector.style.left = `${markerAnchorLeft}px`;
+      connector.style.left = `${placement.connectorLeft}px`;
       connector.style.top = `${markerAnchorTop}px`;
-      connector.style.width = `${Math.max(8, rightDockLeft + composerWidth / 2 - markerAnchorLeft)}px`;
+      connector.style.width = `${placement.connectorWidth}px`;
       connector.style.setProperty('--comment-accent', state.commentComposer.color);
       pageEntry.commentLayer.append(connector);
 
-      composer.style.left = `${rightDockLeft}px`;
-      composer.style.top = `${composerTop}px`;
+      composer.style.left = `${placement.left}px`;
+      composer.style.top = `${placement.top}px`;
       composer.style.borderColor = state.commentComposer.color;
       composer.style.setProperty('--comment-accent', state.commentComposer.color);
       composer.innerHTML = `
@@ -975,6 +1004,10 @@ function applySessionAnnotations(annotations, options = {}) {
   if (!options.skipHistory) {
     state.history = state.history.slice(0, state.historyIndex + 1);
     state.history.push(nextAnnotations);
+    if (state.history.length > MAX_HISTORY_ENTRIES) {
+      const overflow = state.history.length - MAX_HISTORY_ENTRIES;
+      state.history.splice(0, overflow);
+    }
     state.historyIndex = state.history.length - 1;
   }
 
@@ -998,7 +1031,10 @@ function requestSave() {
     type: 'annotationsChanged',
     payload: {
       annotations: {
-        ...cloneAnnotations(state.sessionAnnotations),
+        version: state.sessionAnnotations.version,
+        strokes: state.sessionAnnotations.strokes,
+        highlights: state.sessionAnnotations.highlights,
+        comments: state.sessionAnnotations.comments,
         updatedAt: new Date().toISOString()
       }
     }
@@ -1057,18 +1093,11 @@ async function rerenderPages() {
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
   renderComments(state.sessionAnnotations.comments);
-  if (state.commentComposer) {
-    ensureRightDockVisible(state.commentComposer.page, 210, 10);
-  } else if (state.openCommentId) {
-    const openComment = state.sessionAnnotations.comments.find((comment) => comment.id === state.openCommentId);
-    if (openComment) {
-      ensureRightDockVisible(openComment.page, 130, 10);
-    }
-  }
   updateSearchResults({ preserveActive: true });
   renderSidebar();
   updatePageIndicator();
   updateZoomPresetIndicator();
+  updateLayoutState();
   updateInteractionMode();
   restoreZoomViewport();
 }
@@ -1100,12 +1129,15 @@ function updateCurrentPageFromScroll() {
   const viewportTop = workspaceEl.scrollTop;
   let closestPage = state.pageEntries[0].pageNumber;
   let closestDistance = Number.POSITIVE_INFINITY;
+  let closestLeft = Number.POSITIVE_INFINITY;
 
   for (const pageEntry of state.pageEntries) {
     const distance = Math.abs(getPageScrollTop(pageEntry) - viewportTop);
+    const left = pageEntry.pageShell.offsetLeft;
 
-    if (distance < closestDistance) {
+    if (distance < closestDistance || (Math.abs(distance - closestDistance) <= 1 && left < closestLeft)) {
       closestDistance = distance;
+      closestLeft = left;
       closestPage = pageEntry.pageNumber;
     }
   }
@@ -1132,20 +1164,63 @@ function setActiveColor(color) {
   }
 }
 
-function ensureRightDockVisible(pageNumber, overlayWidth, gap = 10) {
-  const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
-  if (!pageEntry) {
-    return;
-  }
-
+function getCommentOverlayPlacement({
+  pageEntry,
+  overlayWidth,
+  overlayHeight,
+  gap,
+  anchorRight,
+  anchorTop,
+  markerAnchorX
+}) {
   const padding = 8;
-  const requiredRight = pageEntry.pageShell.offsetLeft + pageEntry.width + gap + overlayWidth + padding;
-  const visibleRight = workspaceEl.scrollLeft + workspaceEl.clientWidth;
-  if (requiredRight <= visibleRight) {
-    return;
+  const top = Math.min(pageEntry.height - overlayHeight, Math.max(2, anchorTop - 2));
+  const visibleLeft = workspaceEl.scrollLeft - pageEntry.pageShell.offsetLeft;
+  const visibleRight = visibleLeft + workspaceEl.clientWidth;
+  const canFitToVisibleRight = (left) => left + overlayWidth + padding <= visibleRight;
+  const canFitToVisibleLeft = (left) => left >= visibleLeft + padding;
+  const isMostlyRightOfAnchor = (left) => left + overlayWidth * 0.5 >= anchorRight;
+  const isMostlyLeftOfAnchor = (left) => left + overlayWidth * 0.5 <= anchorRight;
+  const preferredRightLeft = pageEntry.width + gap;
+  const shiftedRightLeft = Math.min(preferredRightLeft, visibleRight - overlayWidth - padding);
+  const preferredLeftLeft = anchorRight - overlayWidth - gap;
+  const shiftedLeftLeft = Math.max(padding, Math.max(visibleLeft + padding, preferredLeftLeft));
+  const preferLeftOutside = state.pageLayout === 'double' && pageEntry.pageNumber % 2 === 1;
+
+  let left;
+  if (preferLeftOutside) {
+    const outsideLeft = -overlayWidth - gap;
+    if (canFitToVisibleLeft(outsideLeft)) {
+      left = outsideLeft;
+    } else if (canFitToVisibleLeft(shiftedLeftLeft) && isMostlyLeftOfAnchor(shiftedLeftLeft)) {
+      left = shiftedLeftLeft;
+    } else if (canFitToVisibleRight(shiftedRightLeft)) {
+      left = shiftedRightLeft;
+    } else {
+      left = Math.max(padding, Math.min(preferredLeftLeft, pageEntry.width - overlayWidth - padding));
+    }
+  } else {
+    if (canFitToVisibleRight(preferredRightLeft)) {
+      left = preferredRightLeft;
+    } else if (canFitToVisibleRight(shiftedRightLeft) && isMostlyRightOfAnchor(shiftedRightLeft)) {
+      left = shiftedRightLeft;
+    } else if (canFitToVisibleLeft(shiftedLeftLeft)) {
+      left = shiftedLeftLeft;
+    } else {
+      left = Math.max(padding, Math.min(preferredLeftLeft, pageEntry.width - overlayWidth - padding));
+    }
   }
 
-  workspaceEl.scrollLeft = Math.max(0, requiredRight - workspaceEl.clientWidth);
+  const overlayMidX = left + overlayWidth / 2;
+  const connectorLeft = Math.min(markerAnchorX, overlayMidX);
+  const connectorWidth = Math.max(8, Math.abs(overlayMidX - markerAnchorX));
+
+  return {
+    left,
+    top,
+    connectorLeft,
+    connectorWidth
+  };
 }
 
 function setColorPopoverOpen(nextOpen, owner = state.colorPopoverOwner ?? state.mode) {
@@ -1208,6 +1283,22 @@ function setMode(mode) {
   updateInteractionMode();
 }
 
+function setPageLayout(nextLayout) {
+  if (state.pageLayout === nextLayout) {
+    return;
+  }
+
+  state.pageLayout = nextLayout;
+  updateLayoutState();
+
+  if (!state.pdfBase64) {
+    return;
+  }
+
+  state.zoomContext = createZoomContext();
+  scheduleZoomRerender();
+}
+
 function updateInteractionMode() {
   for (const button of modeToggleEl.querySelectorAll('.mode-button')) {
     button.classList.toggle('is-active', button.dataset.mode === state.mode);
@@ -1227,6 +1318,25 @@ function updateInteractionMode() {
 function updateHistoryState() {
   undoButtonEl.disabled = state.historyIndex <= 0;
   redoButtonEl.disabled = state.historyIndex >= state.history.length - 1;
+}
+
+function updateCommentViewsToggleState() {
+  commentViewsToggleEl.classList.toggle('is-active', state.showAllComments);
+  commentViewsToggleEl.setAttribute('aria-pressed', String(state.showAllComments));
+  const label = state.showAllComments ? 'Collapse all comments' : 'Show all comments';
+  commentViewsToggleEl.setAttribute('aria-label', label);
+  commentViewsToggleEl.setAttribute('title', label);
+}
+
+function updateLayoutState() {
+  const isDouble = state.pageLayout === 'double';
+  pagesEl.classList.toggle('is-double', isDouble);
+  layoutToggleEl.classList.toggle('is-active', isDouble);
+  layoutToggleEl.setAttribute('aria-pressed', String(isDouble));
+  layoutToggleEl.innerHTML = isDouble ? icons.layoutSingle : icons.layoutDouble;
+  const nextLabel = isDouble ? 'Switch to single-page view' : 'Switch to two-page view';
+  layoutToggleEl.setAttribute('aria-label', nextLabel);
+  layoutToggleEl.setAttribute('title', nextLabel);
 }
 
 function setMenuOpen(nextOpen) {
@@ -1602,13 +1712,15 @@ function getZoomConfig() {
   if (state.zoomMode === 'custom') {
     return {
       mode: 'custom',
-      scale: state.zoom
+      scale: state.zoom,
+      layout: state.pageLayout
     };
   }
 
   return {
     mode: state.zoomMode,
-    scale: state.zoom
+    scale: state.zoom,
+    layout: state.pageLayout
   };
 }
 
@@ -1682,6 +1794,10 @@ zoomPresetEl.addEventListener('change', () => {
   applyZoomPreset(zoomPresetEl.value);
 });
 
+layoutToggleEl.addEventListener('click', () => {
+  setPageLayout(state.pageLayout === 'double' ? 'single' : 'double');
+});
+
 function applyTypedPageJump() {
   const requestedPage = Number(pageInputEl.value);
   if (!Number.isFinite(requestedPage)) {
@@ -1728,6 +1844,15 @@ commentButtonEl.addEventListener('click', () => {
   }
 });
 
+commentViewsToggleEl.addEventListener('click', () => {
+  state.showAllComments = !state.showAllComments;
+  if (state.showAllComments) {
+    state.openCommentId = null;
+  }
+  updateCommentViewsToggleState();
+  renderComments(state.sessionAnnotations.comments);
+});
+
 menuButtonEl.addEventListener('click', () => {
   setMenuOpen(!state.menuOpen);
 });
@@ -1746,7 +1871,7 @@ strokeColorEl.addEventListener('input', () => {
 });
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.mode-wrap, #comment-button, #color-popover')) {
+  if (!event.target.closest('.mode-wrap, #comment-button, #comment-views-toggle, #color-popover')) {
     setColorPopoverOpen(false);
   }
 
@@ -1756,8 +1881,10 @@ window.addEventListener('click', (event) => {
   }
 
   if (!event.target.closest('.comment-marker, .comment-popup, .comment-composer')) {
-    state.openCommentId = null;
-    renderComments(state.sessionAnnotations.comments);
+    if (!state.showAllComments) {
+      state.openCommentId = null;
+      renderComments(state.sessionAnnotations.comments);
+    }
   }
 
   if (state.searchOpen && !event.target.closest('.search-wrap')) {
@@ -1850,11 +1977,15 @@ window.addEventListener('message', async (event) => {
     state.searchQuery = '';
     state.searchMatches = [];
     state.activeSearchMatchIndex = -1;
+    state.pageLayout = 'single';
+    state.showAllComments = false;
     setColorPopoverOpen(false);
     searchInputEl.value = '';
     updateSearchUI();
     setSidebarOpen(false);
     setSidebarTab('outline');
+    updateLayoutState();
+    updateCommentViewsToggleState();
 
     try {
       await rerenderPages();

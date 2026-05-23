@@ -18,6 +18,14 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     width: baseViewport.width,
     height: baseViewport.height
   });
+  const renderOutputScale = resolveRenderOutputScale({
+    pageCount: pdf.numPages,
+    pageWidth: baseViewport.width,
+    pageHeight: baseViewport.height,
+    zoomScale: resolvedScale,
+    devicePixelRatio: globalThis.devicePixelRatio || 1
+  });
+  const thumbnailWidth = pdf.numPages > 80 ? 64 : pdf.numPages > 40 ? 76 : 92;
   const pages = [];
   const fragment = document.createDocumentFragment();
 
@@ -25,11 +33,12 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: resolvedScale });
     const unscaledViewport = page.getViewport({ scale: 1 });
-    const outputScale = globalThis.devicePixelRatio || 1;
+    const outputScale = renderOutputScale;
     const pageShell = document.createElement('div');
     const pdfCanvas = document.createElement('canvas');
     const highlightLayer = document.createElement('div');
     const searchLayer = document.createElement('div');
+    const formLayer = document.createElement('div');
     const commentLayer = document.createElement('div');
     const textLayerBuilder = new TextLayerBuilder({});
     const textLayer = textLayerBuilder.div;
@@ -39,6 +48,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     pdfCanvas.className = 'pdf-canvas';
     highlightLayer.className = 'highlight-layer';
     searchLayer.className = 'search-layer';
+    formLayer.className = 'form-layer';
     commentLayer.className = 'comment-layer';
     textLayer.classList.add('text-layer');
     drawingCanvas.className = 'drawing-canvas';
@@ -58,7 +68,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     textLayer.style.width = `${unscaledViewport.width}px`;
     textLayer.style.height = `${unscaledViewport.height}px`;
 
-    pageShell.append(pdfCanvas, highlightLayer, searchLayer, textLayer, commentLayer, drawingCanvas);
+    pageShell.append(pdfCanvas, highlightLayer, searchLayer, textLayer, formLayer, commentLayer, drawingCanvas);
     fragment.append(pageShell);
 
     const pdfContext = pdfCanvas.getContext('2d');
@@ -69,7 +79,6 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     }).promise;
 
     const thumbnailCanvas = document.createElement('canvas');
-    const thumbnailWidth = 92;
     const thumbnailScale = thumbnailWidth / Math.max(viewport.width, 1);
     thumbnailCanvas.width = Math.max(1, Math.round(viewport.width * thumbnailScale));
     thumbnailCanvas.height = Math.max(1, Math.round(viewport.height * thumbnailScale));
@@ -87,6 +96,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       pdfCanvas,
       highlightLayer,
       searchLayer,
+      formLayer,
       commentLayer,
       textLayer,
       textDivs: textLayerBuilder.textDivs,
@@ -94,7 +104,9 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
       drawingCanvas,
       thumbnailDataUrl: thumbnailCanvas.toDataURL('image/png'),
       width: viewport.width,
-      height: viewport.height
+      height: viewport.height,
+      pdfWidth: unscaledViewport.width,
+      pdfHeight: unscaledViewport.height
     });
   }
 
@@ -104,6 +116,13 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     resolvedScale,
     fragment
   };
+}
+
+function resolveRenderOutputScale({ pageCount, pageWidth, pageHeight, zoomScale, devicePixelRatio }) {
+  const pagePixelArea = Math.max(1, pageWidth * pageHeight * zoomScale * zoomScale);
+  const maxTotalPixels = 90_000_000;
+  const safeScale = Math.sqrt(maxTotalPixels / Math.max(pageCount * pagePixelArea, 1));
+  return Math.max(0.6, Math.min(devicePixelRatio, safeScale));
 }
 
 async function buildOutline(pdf) {

@@ -35,35 +35,69 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SaveManager = void 0;
 const fs = __importStar(require("node:fs/promises"));
+const http = __importStar(require("node:http"));
+const https = __importStar(require("node:https"));
 const pdf_lib_1 = require("pdf-lib");
 const annotation_1 = require("../models/annotation");
+const formField_1 = require("../models/formField");
 const constants_1 = require("../src/constants");
 const annotationDocument_1 = require("../src/validation/annotationDocument");
 const PDF_STUDIO_COMMENT_KEY = pdf_lib_1.PDFName.of('PDFStudioComment');
 class SaveManager {
     sessionBasePdf = new Map();
     sessionAnnotations = new Map();
+    sessionFormFields = new Map();
+    sessionResetFormFields = new Map();
+    sessionFingerprints = new Map();
     async getPdfBytes(pdfUri) {
+        await this.ensureSessionStateFresh(pdfUri);
         const cacheKey = pdfUri.toString();
-        if (!this.sessionBasePdf.has(cacheKey)) {
-            await this.loadSessionState(pdfUri);
-        }
         return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
     }
     async getAnnotations(pdfUri) {
+        await this.ensureSessionStateFresh(pdfUri);
         const cacheKey = pdfUri.toString();
-        if (!this.sessionAnnotations.has(cacheKey)) {
-            await this.loadSessionState(pdfUri);
-        }
         return structuredClone(this.sessionAnnotations.get(cacheKey) ?? (0, annotation_1.emptyAnnotationDocument)());
     }
-    async save(pdfUri, annotations) {
+    async getFormFields(pdfUri) {
+        await this.ensureSessionStateFresh(pdfUri);
+        const cacheKey = pdfUri.toString();
+        return structuredClone(this.sessionFormFields.get(cacheKey) ?? (0, formField_1.emptyFormFields)());
+    }
+    async getResetFormFields(pdfUri) {
+        await this.ensureSessionStateFresh(pdfUri);
+        const cacheKey = pdfUri.toString();
+        return structuredClone(this.sessionResetFormFields.get(cacheKey) ?? (0, formField_1.emptyFormFields)());
+    }
+    async getButtonAction(pdfUri, name) {
+        const formFields = await this.getFormFields(pdfUri);
+        const field = formFields.find((candidate) => candidate.type === 'button' && candidate.name === name);
+        return field?.action ? structuredClone(field.action) : null;
+    }
+    async submitForm(formFields, action) {
+        if (action.type !== 'submit' || !action.url) {
+            throw new Error('This PDF button does not expose a supported submit target.');
+        }
+        const fieldData = buildSubmitFormPayload(formFields);
+        const targetUrl = new URL(action.url);
+        const method = action.method ?? 'POST';
+        if (method === 'GET') {
+            for (const [key, value] of fieldData) {
+                targetUrl.searchParams.append(key, value);
+            }
+            await executeHttpRequest(targetUrl, 'GET');
+            return;
+        }
+        await executeHttpRequest(targetUrl, 'POST', new URLSearchParams(fieldData).toString());
+    }
+    async saveDocument(pdfUri, annotations, formFields) {
         const cacheKey = pdfUri.toString();
         let basePdfBytes = this.sessionBasePdf.get(cacheKey);
         if (!basePdfBytes) {
             basePdfBytes = await this.getPdfBytes(pdfUri);
         }
         const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
+        applyFormFieldValues(pdfDocument, formFields);
         const pages = pdfDocument.getPages();
         for (const stroke of annotations.strokes) {
             const page = pages[stroke.page - 1];
@@ -124,48 +158,282 @@ class SaveManager {
         const output = await pdfDocument.save();
         await fs.writeFile(pdfUri.fsPath, output);
         this.sessionAnnotations.set(cacheKey, structuredClone(annotations));
+        this.sessionFormFields.set(cacheKey, structuredClone(formFields));
+        this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
     }
     disposeSession(pdfUri) {
         const cacheKey = pdfUri.toString();
         this.sessionBasePdf.delete(cacheKey);
         this.sessionAnnotations.delete(cacheKey);
+        this.sessionFormFields.delete(cacheKey);
+        this.sessionResetFormFields.delete(cacheKey);
+        this.sessionFingerprints.delete(cacheKey);
     }
     async loadSessionState(pdfUri) {
         const cacheKey = pdfUri.toString();
         const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
         const pdfDocument = await pdf_lib_1.PDFDocument.load(pdfBytes);
-        const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY));
-        const basePdfBytes = embeddedBase instanceof pdf_lib_1.PDFRawStream ? (0, pdf_lib_1.decodePDFRawStream)(embeddedBase).decode() : pdfBytes;
-        this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
+        const nativeComments = extractNativeComments(pdfDocument);
+        const formFields = extractFormFields(pdfDocument);
+        this.sessionFormFields.set(cacheKey, formFields);
+        this.sessionResetFormFields.set(cacheKey, extractResetFormFields(pdfDocument, formFields));
         const rawAnnotationData = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY));
         const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString || rawAnnotationData instanceof pdf_lib_1.PDFString
             ? rawAnnotationData.decodeText()
             : null;
-        const nativeComments = extractNativeComments(pdfDocument);
+        const sanitizedAnnotations = parseStoredAnnotations(annotationJson);
+        const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY));
+        const basePdfBytes = await resolveSessionBasePdfBytes(pdfBytes, pdfDocument, formFields, embeddedBase, hasRenderableStudioMarkup(sanitizedAnnotations));
+        this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
         if (!annotationJson) {
             this.sessionAnnotations.set(cacheKey, {
                 ...(0, annotation_1.emptyAnnotationDocument)(),
                 comments: nativeComments
             });
+            this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
             return;
         }
-        try {
-            const parsed = JSON.parse(annotationJson);
-            const sanitized = (0, annotationDocument_1.sanitizeAnnotationDocument)(parsed);
-            this.sessionAnnotations.set(cacheKey, {
-                ...sanitized,
-                comments: mergeComments(sanitized.comments, nativeComments)
-            });
+        this.sessionAnnotations.set(cacheKey, {
+            ...sanitizedAnnotations,
+            comments: mergeComments(sanitizedAnnotations.comments, nativeComments)
+        });
+        this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
+    }
+    async ensureSessionStateFresh(pdfUri) {
+        const cacheKey = pdfUri.toString();
+        const cachedFingerprint = this.sessionFingerprints.get(cacheKey);
+        const hasSession = this.sessionBasePdf.has(cacheKey) &&
+            this.sessionAnnotations.has(cacheKey) &&
+            this.sessionFormFields.has(cacheKey) &&
+            this.sessionResetFormFields.has(cacheKey) &&
+            Boolean(cachedFingerprint);
+        if (!hasSession) {
+            await this.loadSessionState(pdfUri);
+            return;
         }
-        catch {
-            this.sessionAnnotations.set(cacheKey, {
-                ...(0, annotation_1.emptyAnnotationDocument)(),
-                comments: nativeComments
-            });
+        const currentFingerprint = await getFileFingerprint(pdfUri.fsPath);
+        if (currentFingerprint.size !== cachedFingerprint.size ||
+            currentFingerprint.mtimeMs !== cachedFingerprint.mtimeMs) {
+            await this.loadSessionState(pdfUri);
         }
     }
 }
 exports.SaveManager = SaveManager;
+async function getFileFingerprint(fsPath) {
+    const stats = await fs.stat(fsPath);
+    return {
+        size: stats.size,
+        mtimeMs: stats.mtimeMs
+    };
+}
+function parseStoredAnnotations(annotationJson) {
+    if (!annotationJson) {
+        return (0, annotation_1.emptyAnnotationDocument)();
+    }
+    try {
+        return (0, annotationDocument_1.sanitizeAnnotationDocument)(JSON.parse(annotationJson));
+    }
+    catch {
+        return (0, annotation_1.emptyAnnotationDocument)();
+    }
+}
+function hasRenderableStudioMarkup(annotations) {
+    return (annotations.strokes.length > 0 ||
+        annotations.highlights.length > 0 ||
+        annotations.comments.length > 0);
+}
+async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFormFields, embeddedBase, hasStudioMarkup) {
+    if (!(embeddedBase instanceof pdf_lib_1.PDFRawStream)) {
+        return livePdfBytes;
+    }
+    const embeddedBaseBytes = (0, pdf_lib_1.decodePDFRawStream)(embeddedBase).decode();
+    if (!liveFormFields.length) {
+        return embeddedBaseBytes;
+    }
+    try {
+        const basePdfDocument = await pdf_lib_1.PDFDocument.load(embeddedBaseBytes);
+        const livePageCount = livePdfDocument.getPageCount();
+        const basePageCount = basePdfDocument.getPageCount();
+        if (livePageCount > basePageCount) {
+            return materializeExternalPageAdditionsOnBase(embeddedBaseBytes, livePdfBytes, basePageCount, livePageCount);
+        }
+        const baseFormFields = extractFormFields(basePdfDocument);
+        const baseFieldNames = new Set(baseFormFields.map((field) => field.name));
+        const missingFormFields = liveFormFields.filter((field) => !baseFieldNames.has(field.name));
+        if (missingFormFields.length) {
+            return materializeFormFieldsOnBase(embeddedBaseBytes, liveFormFields);
+        }
+    }
+    catch {
+        return livePdfBytes;
+    }
+    return embeddedBaseBytes;
+}
+function countNativeFormFields(pdfDocument) {
+    const form = pdfDocument.getForm();
+    if (form.hasXFA()) {
+        return 0;
+    }
+    return form.getFields().length;
+}
+async function materializeFormFieldsOnBase(basePdfBytes, liveFormFields) {
+    const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
+    const form = pdfDocument.getForm();
+    if (form.hasXFA()) {
+        form.deleteXFA();
+    }
+    const existingNames = new Set(form.getFields().map((field) => field.getName()));
+    for (const fieldState of liveFormFields) {
+        if (existingNames.has(fieldState.name)) {
+            continue;
+        }
+        if (fieldState.type === 'text') {
+            const field = form.createTextField(fieldState.name);
+            if (fieldState.multiline) {
+                field.enableMultiline();
+            }
+            if (fieldState.maxLength) {
+                field.setMaxLength(fieldState.maxLength);
+            }
+            setReadOnly(field, fieldState.readOnly);
+            for (const widget of fieldState.widgets) {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    continue;
+                }
+                field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+            }
+            field.setText(fieldState.value || '');
+            continue;
+        }
+        if (fieldState.type === 'checkbox') {
+            const field = form.createCheckBox(fieldState.name);
+            setReadOnly(field, fieldState.readOnly);
+            for (const widget of fieldState.widgets) {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    continue;
+                }
+                field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+            }
+            if (fieldState.checked) {
+                field.check();
+            }
+            else {
+                field.uncheck();
+            }
+            continue;
+        }
+        if (fieldState.type === 'radio') {
+            const field = form.createRadioGroup(fieldState.name);
+            setReadOnly(field, fieldState.readOnly);
+            fieldState.widgets.forEach((widget, index) => {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    return;
+                }
+                const option = widget.option ?? fieldState.options[index] ?? `Option ${index + 1}`;
+                field.addOptionToPage(option, page, buildFieldAppearanceOptions(page, widget));
+            });
+            if (fieldState.value) {
+                field.select(fieldState.value);
+            }
+            continue;
+        }
+        if (fieldState.type === 'dropdown') {
+            const field = form.createDropdown(fieldState.name);
+            field.setOptions(fieldState.options);
+            if (fieldState.editable) {
+                field.enableEditing();
+            }
+            if (fieldState.multiSelect) {
+                field.enableMultiselect();
+            }
+            setReadOnly(field, fieldState.readOnly);
+            for (const widget of fieldState.widgets) {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    continue;
+                }
+                field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+            }
+            if (fieldState.value.length) {
+                field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+            }
+            continue;
+        }
+        if (fieldState.type === 'optionList') {
+            const field = form.createOptionList(fieldState.name);
+            field.setOptions(fieldState.options);
+            if (fieldState.multiSelect) {
+                field.enableMultiselect();
+            }
+            setReadOnly(field, fieldState.readOnly);
+            for (const widget of fieldState.widgets) {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    continue;
+                }
+                field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+            }
+            if (fieldState.value.length) {
+                field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+            }
+            continue;
+        }
+        if (fieldState.type === 'button') {
+            const field = form.createButton(fieldState.name);
+            setReadOnly(field, fieldState.readOnly);
+            for (const widget of fieldState.widgets) {
+                const page = pdfDocument.getPage(widget.page - 1);
+                if (!page) {
+                    continue;
+                }
+                field.addToPage(fieldState.label, page, buildFieldAppearanceOptions(page, widget));
+            }
+            applyButtonActionToField(pdfDocument, field, fieldState.action);
+            continue;
+        }
+    }
+    form.updateFieldAppearances();
+    return pdfDocument.save();
+}
+async function materializeExternalPageAdditionsOnBase(basePdfBytes, livePdfBytes, basePageCount, livePageCount) {
+    const basePdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
+    const livePdfDocument = await pdf_lib_1.PDFDocument.load(livePdfBytes);
+    const pageIndexes = [];
+    for (let index = basePageCount; index < livePageCount; index += 1) {
+        pageIndexes.push(index);
+    }
+    if (!pageIndexes.length) {
+        return basePdfBytes;
+    }
+    const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+    for (const page of copiedPages) {
+        basePdfDocument.addPage(page);
+    }
+    return basePdfDocument.save();
+}
+function buildFieldAppearanceOptions(page, widget) {
+    return {
+        x: widget.x,
+        y: page.getHeight() - widget.y - widget.height,
+        width: widget.width,
+        height: widget.height,
+        borderColor: (0, pdf_lib_1.rgb)(0.45, 0.45, 0.45),
+        backgroundColor: (0, pdf_lib_1.rgb)(1, 1, 1),
+        textColor: (0, pdf_lib_1.rgb)(0.1, 0.1, 0.1)
+    };
+}
+function setReadOnly(field, readOnly) {
+    const maybeField = field;
+    if (readOnly) {
+        maybeField.enableReadOnly?.();
+    }
+    else {
+        maybeField.disableReadOnly?.();
+    }
+}
 function toSegments(points) {
     const segments = [];
     for (let index = 1; index < points.length; index += 1) {
@@ -189,6 +457,251 @@ function toRgb(hex) {
     const green = ((value >> 8) & 0xff) / 255;
     const blue = (value & 0xff) / 255;
     return (0, pdf_lib_1.rgb)(red, green, blue);
+}
+function applyFormFieldValues(pdfDocument, formFields) {
+    if (!formFields.length) {
+        return;
+    }
+    const form = pdfDocument.getForm();
+    if (form.hasXFA()) {
+        form.deleteXFA();
+    }
+    for (const fieldState of formFields) {
+        const field = form.getFieldMaybe(fieldState.name);
+        if (!field) {
+            continue;
+        }
+        switch (fieldState.type) {
+            case 'text':
+                if (field instanceof pdf_lib_1.PDFTextField) {
+                    field.setText(fieldState.value || undefined);
+                }
+                break;
+            case 'checkbox':
+                if (field instanceof pdf_lib_1.PDFCheckBox) {
+                    if (fieldState.checked) {
+                        field.check();
+                    }
+                    else {
+                        field.uncheck();
+                    }
+                }
+                break;
+            case 'radio':
+                if (field instanceof pdf_lib_1.PDFRadioGroup) {
+                    if (fieldState.value) {
+                        field.select(fieldState.value);
+                    }
+                    else {
+                        field.clear();
+                    }
+                }
+                break;
+            case 'dropdown':
+                if (field instanceof pdf_lib_1.PDFDropdown) {
+                    if (fieldState.value.length) {
+                        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+                    }
+                    else {
+                        field.clear();
+                    }
+                }
+                break;
+            case 'optionList':
+                if (field instanceof pdf_lib_1.PDFOptionList) {
+                    if (fieldState.value.length) {
+                        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+                    }
+                    else {
+                        field.clear();
+                    }
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    form.updateFieldAppearances();
+}
+function extractResetFormFields(pdfDocument, currentFormFields) {
+    const form = pdfDocument.getForm();
+    if (form.hasXFA()) {
+        return structuredClone(currentFormFields);
+    }
+    return currentFormFields.map((fieldState) => {
+        const field = form.getFieldMaybe(fieldState.name);
+        if (!field) {
+            return fieldState;
+        }
+        switch (fieldState.type) {
+            case 'text':
+                return {
+                    ...fieldState,
+                    value: decodeDefaultTextValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                };
+            case 'checkbox':
+                return {
+                    ...fieldState,
+                    checked: decodeDefaultCheckboxValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                };
+            case 'radio':
+                return {
+                    ...fieldState,
+                    value: decodeDefaultChoiceValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                };
+            case 'dropdown':
+            case 'optionList':
+                return {
+                    ...fieldState,
+                    value: decodeDefaultChoiceValues(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                };
+            default:
+                return fieldState;
+        }
+    });
+}
+function decodeDefaultTextValue(value) {
+    if (value instanceof pdf_lib_1.PDFString || value instanceof pdf_lib_1.PDFHexString) {
+        return value.decodeText();
+    }
+    return '';
+}
+function decodeDefaultCheckboxValue(value) {
+    if (value instanceof pdf_lib_1.PDFName) {
+        return value.decodeText() !== 'Off';
+    }
+    if (value instanceof pdf_lib_1.PDFString || value instanceof pdf_lib_1.PDFHexString) {
+        return value.decodeText() !== 'Off';
+    }
+    return false;
+}
+function decodeDefaultChoiceValue(value) {
+    if (value instanceof pdf_lib_1.PDFName) {
+        const decoded = value.decodeText();
+        return decoded.length ? decoded : null;
+    }
+    if (value instanceof pdf_lib_1.PDFString || value instanceof pdf_lib_1.PDFHexString) {
+        const decoded = value.decodeText();
+        return decoded.length ? decoded : null;
+    }
+    return null;
+}
+function decodeDefaultChoiceValues(value) {
+    if (value instanceof pdf_lib_1.PDFArray) {
+        const values = [];
+        for (let index = 0; index < value.size(); index += 1) {
+            const entry = value.lookup(index);
+            const decoded = decodeDefaultChoiceValue(entry);
+            if (decoded) {
+                values.push(decoded);
+            }
+        }
+        return values;
+    }
+    const single = decodeDefaultChoiceValue(value);
+    return single ? [single] : [];
+}
+function buildSubmitFormPayload(formFields) {
+    const payload = [];
+    for (const field of formFields) {
+        switch (field.type) {
+            case 'text':
+                payload.push([field.name, field.value]);
+                break;
+            case 'checkbox':
+                if (field.checked) {
+                    payload.push([field.name, 'true']);
+                }
+                break;
+            case 'radio':
+                if (field.value) {
+                    payload.push([field.name, field.value]);
+                }
+                break;
+            case 'dropdown':
+            case 'optionList':
+                for (const value of field.value) {
+                    payload.push([field.name, value]);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    return payload;
+}
+function applyButtonActionToField(pdfDocument, field, action) {
+    if (!action) {
+        return;
+    }
+    const widgets = field.acroField.getWidgets();
+    const widget = widgets[0];
+    if (!widget) {
+        return;
+    }
+    const actionDict = createButtonActionDict(pdfDocument, action);
+    if (!actionDict) {
+        return;
+    }
+    widget.dict.set(pdf_lib_1.PDFName.of('A'), actionDict);
+}
+function createButtonActionDict(pdfDocument, action) {
+    switch (action.type) {
+        case 'reset':
+            return pdfDocument.context.obj({
+                S: pdf_lib_1.PDFName.of('ResetForm')
+            });
+        case 'submit':
+            if (!action.url) {
+                return null;
+            }
+            return pdfDocument.context.obj({
+                S: pdf_lib_1.PDFName.of('SubmitForm'),
+                F: pdf_lib_1.PDFString.of(action.url),
+                Flags: pdf_lib_1.PDFNumber.of(action.method === 'GET' ? 8 : 0)
+            });
+        case 'mailto':
+        case 'uri':
+            if (!action.url) {
+                return null;
+            }
+            return pdfDocument.context.obj({
+                S: pdf_lib_1.PDFName.of('URI'),
+                URI: pdf_lib_1.PDFString.of(action.url)
+            });
+        case 'unsupported':
+        default:
+            return null;
+    }
+}
+async function executeHttpRequest(targetUrl, method, body) {
+    const transport = targetUrl.protocol === 'https:' ? https : http;
+    await new Promise((resolve, reject) => {
+        const request = transport.request(targetUrl, {
+            method,
+            headers: method === 'POST'
+                ? {
+                    'content-type': 'application/x-www-form-urlencoded',
+                    'content-length': Buffer.byteLength(body || '').toString()
+                }
+                : undefined
+        }, (response) => {
+            const statusCode = response.statusCode ?? 0;
+            response.resume();
+            response.on('end', () => {
+                if (statusCode >= 200 && statusCode < 400) {
+                    resolve();
+                    return;
+                }
+                reject(new Error(`SubmitForm request failed with status ${statusCode}.`));
+            });
+        });
+        request.on('error', reject);
+        if (method === 'POST' && body) {
+            request.write(body);
+        }
+        request.end();
+    });
 }
 function addNativeCommentAnnotation(pdfDocument, page, comment) {
     const anchorRect = comment.rects[comment.rects.length - 1];
@@ -261,13 +774,16 @@ function extractNativeComments(pdfDocument) {
             const pageWidth = page.getWidth();
             const pageHeight = page.getHeight();
             const studioData = decodeStudioCommentPayload(annotation.lookupMaybe(PDF_STUDIO_COMMENT_KEY, pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            if (!studioData) {
+                continue;
+            }
             comments.push({
-                id: studioData?.id || nm || `native-${pageIndex + 1}-${Math.round(rect.x)}-${Math.round(rect.y)}-${index}`,
-                color: studioData?.color || color,
+                id: studioData.id || nm || `native-${pageIndex + 1}-${Math.round(rect.x)}-${Math.round(rect.y)}-${index}`,
+                color: studioData.color || color,
                 page: pageIndex + 1,
-                viewportWidth: studioData?.viewportWidth || pageWidth,
-                viewportHeight: studioData?.viewportHeight || pageHeight,
-                rects: studioData?.rects.length
+                viewportWidth: studioData.viewportWidth || pageWidth,
+                viewportHeight: studioData.viewportHeight || pageHeight,
+                rects: studioData.rects.length
                     ? studioData.rects
                     : [
                         {
@@ -282,6 +798,345 @@ function extractNativeComments(pdfDocument) {
         }
     });
     return comments;
+}
+function extractFormFields(pdfDocument) {
+    const form = pdfDocument.getForm();
+    if (form.hasXFA()) {
+        return [];
+    }
+    const pageRefToNumber = new Map();
+    const pageDimensions = new Map();
+    pdfDocument.getPages().forEach((page, index) => {
+        pageRefToNumber.set(page.ref.toString(), index + 1);
+        pageDimensions.set(index + 1, {
+            width: page.getWidth(),
+            height: page.getHeight()
+        });
+    });
+    const fields = [];
+    for (const field of form.getFields()) {
+        const widgets = extractFieldWidgets(pdfDocument, field.acroField.getWidgets(), pageRefToNumber, pageDimensions);
+        if (!widgets.length) {
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFTextField) {
+            fields.push({
+                name: field.getName(),
+                type: 'text',
+                readOnly: field.isReadOnly(),
+                value: field.getText() ?? '',
+                multiline: field.isMultiline(),
+                maxLength: field.getMaxLength() ?? null,
+                semantic: detectTextFieldSemantic(field.getName()),
+                widgets
+            });
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFCheckBox) {
+            fields.push({
+                name: field.getName(),
+                type: 'checkbox',
+                readOnly: field.isReadOnly(),
+                checked: field.isChecked(),
+                widgets
+            });
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFRadioGroup) {
+            const options = field.getOptions();
+            const widgetsWithOptions = widgets.map((widget, index) => ({
+                ...widget,
+                option: options[index] ?? widget.option
+            }));
+            fields.push({
+                name: field.getName(),
+                type: 'radio',
+                readOnly: field.isReadOnly(),
+                value: field.getSelected() ?? null,
+                options,
+                widgets: widgetsWithOptions
+            });
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFDropdown) {
+            fields.push({
+                name: field.getName(),
+                type: 'dropdown',
+                readOnly: field.isReadOnly(),
+                value: field.getSelected(),
+                options: field.getOptions(),
+                editable: field.isEditable(),
+                multiSelect: field.isMultiselect(),
+                widgets
+            });
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFOptionList) {
+            fields.push({
+                name: field.getName(),
+                type: 'optionList',
+                readOnly: field.isReadOnly(),
+                value: field.getSelected(),
+                options: field.getOptions(),
+                multiSelect: field.isMultiselect(),
+                widgets
+            });
+            continue;
+        }
+        if (field instanceof pdf_lib_1.PDFButton) {
+            fields.push({
+                name: field.getName(),
+                type: 'button',
+                readOnly: field.isReadOnly(),
+                label: extractButtonLabel(field, widgets),
+                action: extractButtonAction(field),
+                widgets
+            });
+        }
+    }
+    return fields;
+}
+function extractButtonLabel(field, widgets) {
+    const caption = field.acroField
+        .getWidgets()
+        .map((widget) => widget.getAppearanceCharacteristics()?.getCaptions().normal?.trim())
+        .find((value) => Boolean(value));
+    if (caption) {
+        return caption;
+    }
+    return field.getName().split('.').pop() || `Button ${widgets[0]?.page ?? ''}`.trim();
+}
+function extractButtonAction(field) {
+    const widgets = field.acroField.getWidgets();
+    const candidates = [];
+    for (const widget of widgets) {
+        const action = extractActionDescriptor(widget.dict.lookupMaybe(pdf_lib_1.PDFName.of('A'), pdf_lib_1.PDFDict));
+        if (action) {
+            candidates.push({ action, priority: 100 });
+        }
+        const additionalActions = widget.dict.lookupMaybe(pdf_lib_1.PDFName.of('AA'), pdf_lib_1.PDFDict);
+        if (additionalActions) {
+            for (const [key, priority] of [
+                ['U', 95],
+                ['D', 70],
+                ['PO', 45],
+                ['PC', 40],
+                ['E', 35],
+                ['X', 30],
+                ['Fo', 20],
+                ['Bl', 20],
+                ['PV', 15],
+                ['PI', 15]
+            ]) {
+                const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(pdf_lib_1.PDFName.of(key), pdf_lib_1.PDFDict));
+                if (additionalDescriptor) {
+                    candidates.push({ action: additionalDescriptor, priority });
+                }
+            }
+        }
+    }
+    const directAction = extractActionDescriptor(field.acroField.dict.lookupMaybe(pdf_lib_1.PDFName.of('A'), pdf_lib_1.PDFDict));
+    if (directAction) {
+        candidates.push({ action: directAction, priority: 85 });
+    }
+    const additionalActions = field.acroField.dict.lookupMaybe(pdf_lib_1.PDFName.of('AA'), pdf_lib_1.PDFDict);
+    if (additionalActions) {
+        for (const [key, priority] of [
+            ['U', 80],
+            ['D', 60],
+            ['PO', 35],
+            ['PC', 30],
+            ['E', 25],
+            ['X', 20],
+            ['Fo', 10],
+            ['Bl', 10],
+            ['PV', 5],
+            ['PI', 5]
+        ]) {
+            const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(pdf_lib_1.PDFName.of(key), pdf_lib_1.PDFDict));
+            if (additionalDescriptor) {
+                candidates.push({ action: additionalDescriptor, priority });
+            }
+        }
+    }
+    if (!candidates.length) {
+        return null;
+    }
+    candidates.sort((left, right) => buttonActionScore(right) - buttonActionScore(left));
+    return candidates[0]?.action ?? null;
+}
+function buttonActionScore(candidate) {
+    return candidate.priority + buttonActionTypeWeight(candidate.action);
+}
+function buttonActionTypeWeight(action) {
+    switch (action.type) {
+        case 'submit':
+        case 'mailto':
+        case 'uri':
+            return 1000;
+        case 'reset':
+            return 500;
+        case 'unsupported':
+            return 0;
+        default:
+            return 0;
+    }
+}
+function extractActionDescriptor(action) {
+    if (!action) {
+        return null;
+    }
+    const subtype = action.lookupMaybe(pdf_lib_1.PDFName.of('S'), pdf_lib_1.PDFName)?.decodeText();
+    if (!subtype) {
+        return null;
+    }
+    if (subtype === 'ResetForm') {
+        return {
+            type: 'reset',
+            url: null,
+            method: null,
+            reason: null
+        };
+    }
+    if (subtype !== 'SubmitForm') {
+        if (subtype === 'URI') {
+            const uri = decodePdfText(action.lookupMaybe(pdf_lib_1.PDFName.of('URI'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            return uri
+                ? {
+                    type: uri.startsWith('mailto:') ? 'mailto' : 'uri',
+                    url: uri,
+                    method: null,
+                    reason: null
+                }
+                : {
+                    type: 'unsupported',
+                    url: null,
+                    method: null,
+                    reason: 'URI action has no usable target.'
+                };
+        }
+        return {
+            type: 'unsupported',
+            url: null,
+            method: null,
+            reason: `Unsupported PDF button action: ${subtype}`
+        };
+    }
+    const directTarget = action.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString);
+    const fileSpecTarget = directTarget ? null : action.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFDict);
+    const url = extractSubmitTargetUrl(directTarget ?? fileSpecTarget ?? undefined);
+    if (!url) {
+        return {
+            type: 'unsupported',
+            url: null,
+            method: null,
+            reason: 'Submit button has no usable target URL.'
+        };
+    }
+    if (url.startsWith('mailto:')) {
+        return {
+            type: 'mailto',
+            url,
+            method: null,
+            reason: null
+        };
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return {
+            type: 'submit',
+            url,
+            method: extractSubmitMethod(action),
+            reason: null
+        };
+    }
+    return {
+        type: 'unsupported',
+        url,
+        method: null,
+        reason: `Unsupported submit target: ${url}`
+    };
+}
+function extractSubmitTargetUrl(value) {
+    if (!value) {
+        return null;
+    }
+    if (value instanceof pdf_lib_1.PDFString || value instanceof pdf_lib_1.PDFHexString) {
+        return value.decodeText().trim() || null;
+    }
+    const nested = value.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString);
+    if (nested instanceof pdf_lib_1.PDFString || nested instanceof pdf_lib_1.PDFHexString) {
+        return nested.decodeText().trim() || null;
+    }
+    return null;
+}
+function extractSubmitMethod(action) {
+    const flagsValue = action.lookupMaybe(pdf_lib_1.PDFName.of('Flags'), pdf_lib_1.PDFNumber);
+    if (flagsValue) {
+        const flags = flagsValue.asNumber();
+        if ((flags & 8) !== 0) {
+            return 'GET';
+        }
+    }
+    return 'POST';
+}
+function extractFieldWidgets(pdfDocument, widgets, pageRefToNumber, pageDimensions) {
+    const normalizedWidgets = [];
+    widgets.forEach((widget, index) => {
+        const pageNumber = findWidgetPageNumber(pdfDocument, widget, pageRefToNumber);
+        if (!pageNumber) {
+            return;
+        }
+        const pageSize = pageDimensions.get(pageNumber);
+        if (!pageSize) {
+            return;
+        }
+        const rect = widget.getRectangle();
+        if (!rect.width || !rect.height) {
+            return;
+        }
+        normalizedWidgets.push({
+            id: `${pageNumber}:${Math.round(rect.x)}:${Math.round(rect.y)}:${index}`,
+            page: pageNumber,
+            x: rect.x,
+            y: pageSize.height - rect.y - rect.height,
+            width: rect.width,
+            height: rect.height,
+            option: widget.getOnValue()?.decodeText()
+        });
+    });
+    return normalizedWidgets;
+}
+function findWidgetPageNumber(pdfDocument, widget, pageRefToNumber) {
+    const pageRef = widget.P();
+    if (pageRef) {
+        return pageRefToNumber.get(pageRef.toString()) ?? null;
+    }
+    for (const [pageIndex, page] of pdfDocument.getPages().entries()) {
+        const annots = page.node.Annots();
+        if (!annots) {
+            continue;
+        }
+        for (let index = 0; index < annots.size(); index += 1) {
+            const annotation = annots.lookupMaybe(index, pdf_lib_1.PDFDict);
+            if (annotation === widget.dict) {
+                return pageIndex + 1;
+            }
+        }
+    }
+    return null;
+}
+function detectTextFieldSemantic(name) {
+    const normalized = name.toLowerCase();
+    if (normalized.includes(':signer:fullname') || normalized.includes('fullname') || normalized.includes('full_name')) {
+        return 'fullName';
+    }
+    if (normalized.includes(':signer:email') || normalized.includes('email') || normalized.includes('e-mail')) {
+        return 'email';
+    }
+    if (normalized.includes(':signer:date') || normalized.endsWith('date') || normalized.includes('_date')) {
+        return 'date';
+    }
+    return 'generic';
 }
 function mergeComments(studioComments, nativeComments) {
     if (!nativeComments.length) {

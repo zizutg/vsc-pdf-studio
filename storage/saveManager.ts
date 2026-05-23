@@ -1,49 +1,119 @@
 import * as fs from 'node:fs/promises';
+import * as http from 'node:http';
+import * as https from 'node:https';
 import * as vscode from 'vscode';
 import {
   decodePDFRawStream,
   PDFArray,
-  PDFDocument,
+  PDFButton,
+  PDFCheckBox,
   PDFDict,
+  PDFDocument,
+  PDFDropdown,
   PDFHexString,
   PDFName,
+  PDFNumber,
+  PDFOptionList,
+  PDFRadioGroup,
   PDFRawStream,
   PDFString,
+  PDFTextField,
   rgb
 } from 'pdf-lib';
 import {
   emptyAnnotationDocument,
-  type AnnotationRect,
   type AnnotationComment,
   type AnnotationDocument,
-  type AnnotationPoint
+  type AnnotationPoint,
+  type AnnotationRect
 } from '../models/annotation';
+import {
+  type PdfButtonAction,
+  type PdfButtonFormField,
+  emptyFormFields,
+  type PdfCheckboxFormField,
+  type PdfDropdownFormField,
+  type PdfFormField,
+  type PdfFormFieldWidget,
+  type PdfOptionListFormField,
+  type PdfRadioFormField,
+  type PdfTextFieldSemantic,
+  type PdfTextFormField
+} from '../models/formField';
 import { PDF_STUDIO_BASE_KEY, PDF_STUDIO_DATA_KEY } from '../src/constants';
 import { sanitizeAnnotationDocument } from '../src/validation/annotationDocument';
 
 const PDF_STUDIO_COMMENT_KEY = PDFName.of('PDFStudioComment');
 
+interface SessionFileFingerprint {
+  size: number;
+  mtimeMs: number;
+}
+
 export class SaveManager {
   private readonly sessionBasePdf = new Map<string, Uint8Array>();
   private readonly sessionAnnotations = new Map<string, AnnotationDocument>();
+  private readonly sessionFormFields = new Map<string, PdfFormField[]>();
+  private readonly sessionResetFormFields = new Map<string, PdfFormField[]>();
+  private readonly sessionFingerprints = new Map<string, SessionFileFingerprint>();
 
   public async getPdfBytes(pdfUri: vscode.Uri): Promise<Uint8Array> {
+    await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    if (!this.sessionBasePdf.has(cacheKey)) {
-      await this.loadSessionState(pdfUri);
-    }
     return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
   }
 
   public async getAnnotations(pdfUri: vscode.Uri): Promise<AnnotationDocument> {
+    await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    if (!this.sessionAnnotations.has(cacheKey)) {
-      await this.loadSessionState(pdfUri);
-    }
     return structuredClone(this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument());
   }
 
-  public async save(pdfUri: vscode.Uri, annotations: AnnotationDocument): Promise<void> {
+  public async getFormFields(pdfUri: vscode.Uri): Promise<PdfFormField[]> {
+    await this.ensureSessionStateFresh(pdfUri);
+    const cacheKey = pdfUri.toString();
+    return structuredClone(this.sessionFormFields.get(cacheKey) ?? emptyFormFields());
+  }
+
+  public async getResetFormFields(pdfUri: vscode.Uri): Promise<PdfFormField[]> {
+    await this.ensureSessionStateFresh(pdfUri);
+    const cacheKey = pdfUri.toString();
+    return structuredClone(this.sessionResetFormFields.get(cacheKey) ?? emptyFormFields());
+  }
+
+  public async getButtonAction(pdfUri: vscode.Uri, name: string): Promise<PdfButtonAction | null> {
+    const formFields = await this.getFormFields(pdfUri);
+    const field = formFields.find(
+      (candidate): candidate is PdfButtonFormField => candidate.type === 'button' && candidate.name === name
+    );
+    return field?.action ? structuredClone(field.action) : null;
+  }
+
+  public async submitForm(formFields: PdfFormField[], action: PdfButtonAction): Promise<void> {
+    if (action.type !== 'submit' || !action.url) {
+      throw new Error('This PDF button does not expose a supported submit target.');
+    }
+
+    const fieldData = buildSubmitFormPayload(formFields);
+    const targetUrl = new URL(action.url);
+    const method = action.method ?? 'POST';
+
+    if (method === 'GET') {
+      for (const [key, value] of fieldData) {
+        targetUrl.searchParams.append(key, value);
+      }
+      await executeHttpRequest(targetUrl, 'GET');
+      return;
+    }
+
+    await executeHttpRequest(targetUrl, 'POST', new URLSearchParams(fieldData).toString());
+  }
+
+  public async saveDocument(
+    pdfUri: vscode.Uri,
+    annotations: AnnotationDocument,
+    formFields: PdfFormField[]
+  ): Promise<void> {
     const cacheKey = pdfUri.toString();
     let basePdfBytes = this.sessionBasePdf.get(cacheKey);
 
@@ -52,6 +122,7 @@ export class SaveManager {
     }
 
     const pdfDocument = await PDFDocument.load(basePdfBytes);
+    applyFormFieldValues(pdfDocument, formFields);
     const pages = pdfDocument.getPages();
 
     for (const stroke of annotations.strokes) {
@@ -122,12 +193,17 @@ export class SaveManager {
     const output = await pdfDocument.save();
     await fs.writeFile(pdfUri.fsPath, output);
     this.sessionAnnotations.set(cacheKey, structuredClone(annotations));
+    this.sessionFormFields.set(cacheKey, structuredClone(formFields));
+    this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
   }
 
   public disposeSession(pdfUri: vscode.Uri): void {
     const cacheKey = pdfUri.toString();
     this.sessionBasePdf.delete(cacheKey);
     this.sessionAnnotations.delete(cacheKey);
+    this.sessionFormFields.delete(cacheKey);
+    this.sessionResetFormFields.delete(cacheKey);
+    this.sessionFingerprints.delete(cacheKey);
   }
 
   private async loadSessionState(pdfUri: vscode.Uri): Promise<void> {
@@ -135,40 +211,331 @@ export class SaveManager {
     const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
     const pdfDocument = await PDFDocument.load(pdfBytes);
 
-    const embeddedBase = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_BASE_KEY));
-    const basePdfBytes =
-      embeddedBase instanceof PDFRawStream ? decodePDFRawStream(embeddedBase).decode() : pdfBytes;
-    this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
+    const nativeComments = extractNativeComments(pdfDocument);
+    const formFields = extractFormFields(pdfDocument);
+    this.sessionFormFields.set(cacheKey, formFields);
+    this.sessionResetFormFields.set(cacheKey, extractResetFormFields(pdfDocument, formFields));
 
     const rawAnnotationData = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_DATA_KEY));
     const annotationJson =
       rawAnnotationData instanceof PDFHexString || rawAnnotationData instanceof PDFString
         ? rawAnnotationData.decodeText()
         : null;
+    const sanitizedAnnotations = parseStoredAnnotations(annotationJson);
 
-    const nativeComments = extractNativeComments(pdfDocument);
+    const embeddedBase = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_BASE_KEY));
+    const basePdfBytes = await resolveSessionBasePdfBytes(
+      pdfBytes,
+      pdfDocument,
+      formFields,
+      embeddedBase,
+      hasRenderableStudioMarkup(sanitizedAnnotations)
+    );
+    this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
 
     if (!annotationJson) {
       this.sessionAnnotations.set(cacheKey, {
         ...emptyAnnotationDocument(),
         comments: nativeComments
       });
+      this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
       return;
     }
 
-    try {
-      const parsed = JSON.parse(annotationJson) as unknown;
-      const sanitized = sanitizeAnnotationDocument(parsed);
-      this.sessionAnnotations.set(cacheKey, {
-        ...sanitized,
-        comments: mergeComments(sanitized.comments, nativeComments)
-      });
-    } catch {
-      this.sessionAnnotations.set(cacheKey, {
-        ...emptyAnnotationDocument(),
-        comments: nativeComments
-      });
+    this.sessionAnnotations.set(cacheKey, {
+      ...sanitizedAnnotations,
+      comments: mergeComments(sanitizedAnnotations.comments, nativeComments)
+    });
+
+    this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
+  }
+
+  private async ensureSessionStateFresh(pdfUri: vscode.Uri): Promise<void> {
+    const cacheKey = pdfUri.toString();
+    const cachedFingerprint = this.sessionFingerprints.get(cacheKey);
+    const hasSession =
+      this.sessionBasePdf.has(cacheKey) &&
+      this.sessionAnnotations.has(cacheKey) &&
+      this.sessionFormFields.has(cacheKey) &&
+      this.sessionResetFormFields.has(cacheKey) &&
+      Boolean(cachedFingerprint);
+
+    if (!hasSession) {
+      await this.loadSessionState(pdfUri);
+      return;
     }
+
+    const currentFingerprint = await getFileFingerprint(pdfUri.fsPath);
+    if (
+      currentFingerprint.size !== cachedFingerprint!.size ||
+      currentFingerprint.mtimeMs !== cachedFingerprint!.mtimeMs
+    ) {
+      await this.loadSessionState(pdfUri);
+    }
+  }
+}
+
+async function getFileFingerprint(fsPath: string): Promise<SessionFileFingerprint> {
+  const stats = await fs.stat(fsPath);
+  return {
+    size: stats.size,
+    mtimeMs: stats.mtimeMs
+  };
+}
+
+function parseStoredAnnotations(annotationJson: string | null): AnnotationDocument {
+  if (!annotationJson) {
+    return emptyAnnotationDocument();
+  }
+
+  try {
+    return sanitizeAnnotationDocument(JSON.parse(annotationJson) as unknown);
+  } catch {
+    return emptyAnnotationDocument();
+  }
+}
+
+function hasRenderableStudioMarkup(annotations: AnnotationDocument): boolean {
+  return (
+    annotations.strokes.length > 0 ||
+    annotations.highlights.length > 0 ||
+    annotations.comments.length > 0
+  );
+}
+
+async function resolveSessionBasePdfBytes(
+  livePdfBytes: Uint8Array,
+  livePdfDocument: PDFDocument,
+  liveFormFields: PdfFormField[],
+  embeddedBase: unknown,
+  hasStudioMarkup: boolean
+): Promise<Uint8Array> {
+  if (!(embeddedBase instanceof PDFRawStream)) {
+    return livePdfBytes;
+  }
+
+  const embeddedBaseBytes = decodePDFRawStream(embeddedBase).decode();
+  if (!liveFormFields.length) {
+    return embeddedBaseBytes;
+  }
+
+  try {
+    const basePdfDocument = await PDFDocument.load(embeddedBaseBytes);
+    const livePageCount = livePdfDocument.getPageCount();
+    const basePageCount = basePdfDocument.getPageCount();
+
+    if (livePageCount > basePageCount) {
+      return materializeExternalPageAdditionsOnBase(embeddedBaseBytes, livePdfBytes, basePageCount, livePageCount);
+    }
+
+    const baseFormFields = extractFormFields(basePdfDocument);
+    const baseFieldNames = new Set(baseFormFields.map((field) => field.name));
+    const missingFormFields = liveFormFields.filter((field) => !baseFieldNames.has(field.name));
+
+    if (missingFormFields.length) {
+      return materializeFormFieldsOnBase(embeddedBaseBytes, liveFormFields);
+    }
+  } catch {
+    return livePdfBytes;
+  }
+
+  return embeddedBaseBytes;
+}
+
+function countNativeFormFields(pdfDocument: PDFDocument): number {
+  const form = pdfDocument.getForm();
+  if (form.hasXFA()) {
+    return 0;
+  }
+
+  return form.getFields().length;
+}
+
+async function materializeFormFieldsOnBase(
+  basePdfBytes: Uint8Array,
+  liveFormFields: PdfFormField[]
+): Promise<Uint8Array> {
+  const pdfDocument = await PDFDocument.load(basePdfBytes);
+  const form = pdfDocument.getForm();
+  if (form.hasXFA()) {
+    form.deleteXFA();
+  }
+
+  const existingNames = new Set(form.getFields().map((field) => field.getName()));
+
+  for (const fieldState of liveFormFields) {
+    if (existingNames.has(fieldState.name)) {
+      continue;
+    }
+
+    if (fieldState.type === 'text') {
+      const field = form.createTextField(fieldState.name);
+      if (fieldState.multiline) {
+        field.enableMultiline();
+      }
+      if (fieldState.maxLength) {
+        field.setMaxLength(fieldState.maxLength);
+      }
+      setReadOnly(field, fieldState.readOnly);
+      for (const widget of fieldState.widgets) {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          continue;
+        }
+        field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+      }
+      field.setText(fieldState.value || '');
+      continue;
+    }
+
+    if (fieldState.type === 'checkbox') {
+      const field = form.createCheckBox(fieldState.name);
+      setReadOnly(field, fieldState.readOnly);
+      for (const widget of fieldState.widgets) {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          continue;
+        }
+        field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+      }
+      if (fieldState.checked) {
+        field.check();
+      } else {
+        field.uncheck();
+      }
+      continue;
+    }
+
+    if (fieldState.type === 'radio') {
+      const field = form.createRadioGroup(fieldState.name);
+      setReadOnly(field, fieldState.readOnly);
+      fieldState.widgets.forEach((widget, index) => {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          return;
+        }
+        const option = widget.option ?? fieldState.options[index] ?? `Option ${index + 1}`;
+        field.addOptionToPage(option, page, buildFieldAppearanceOptions(page, widget));
+      });
+      if (fieldState.value) {
+        field.select(fieldState.value);
+      }
+      continue;
+    }
+
+    if (fieldState.type === 'dropdown') {
+      const field = form.createDropdown(fieldState.name);
+      field.setOptions(fieldState.options);
+      if (fieldState.editable) {
+        field.enableEditing();
+      }
+      if (fieldState.multiSelect) {
+        field.enableMultiselect();
+      }
+      setReadOnly(field, fieldState.readOnly);
+      for (const widget of fieldState.widgets) {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          continue;
+        }
+        field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+      }
+      if (fieldState.value.length) {
+        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+      }
+      continue;
+    }
+
+    if (fieldState.type === 'optionList') {
+      const field = form.createOptionList(fieldState.name);
+      field.setOptions(fieldState.options);
+      if (fieldState.multiSelect) {
+        field.enableMultiselect();
+      }
+      setReadOnly(field, fieldState.readOnly);
+      for (const widget of fieldState.widgets) {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          continue;
+        }
+        field.addToPage(page, buildFieldAppearanceOptions(page, widget));
+      }
+      if (fieldState.value.length) {
+        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+      }
+      continue;
+    }
+
+    if (fieldState.type === 'button') {
+      const field = form.createButton(fieldState.name);
+      setReadOnly(field, fieldState.readOnly);
+      for (const widget of fieldState.widgets) {
+        const page = pdfDocument.getPage(widget.page - 1);
+        if (!page) {
+          continue;
+        }
+        field.addToPage(fieldState.label, page, buildFieldAppearanceOptions(page, widget));
+      }
+      applyButtonActionToField(pdfDocument, field, fieldState.action);
+      continue;
+    }
+  }
+
+  form.updateFieldAppearances();
+  return pdfDocument.save();
+}
+
+async function materializeExternalPageAdditionsOnBase(
+  basePdfBytes: Uint8Array,
+  livePdfBytes: Uint8Array,
+  basePageCount: number,
+  livePageCount: number
+): Promise<Uint8Array> {
+  const basePdfDocument = await PDFDocument.load(basePdfBytes);
+  const livePdfDocument = await PDFDocument.load(livePdfBytes);
+
+  const pageIndexes = [];
+  for (let index = basePageCount; index < livePageCount; index += 1) {
+    pageIndexes.push(index);
+  }
+
+  if (!pageIndexes.length) {
+    return basePdfBytes;
+  }
+
+  const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+  for (const page of copiedPages) {
+    basePdfDocument.addPage(page);
+  }
+
+  return basePdfDocument.save();
+}
+
+function buildFieldAppearanceOptions(
+  page: PDFDocument['getPages'] extends () => Array<infer T> ? T : never,
+  widget: PdfFormFieldWidget
+) {
+  return {
+    x: widget.x,
+    y: page.getHeight() - widget.y - widget.height,
+    width: widget.width,
+    height: widget.height,
+    borderColor: rgb(0.45, 0.45, 0.45),
+    backgroundColor: rgb(1, 1, 1),
+    textColor: rgb(0.1, 0.1, 0.1)
+  };
+}
+
+function setReadOnly(field: unknown, readOnly: boolean): void {
+  const maybeField = field as {
+    enableReadOnly?: () => void;
+    disableReadOnly?: () => void;
+  };
+
+  if (readOnly) {
+    maybeField.enableReadOnly?.();
+  } else {
+    maybeField.disableReadOnly?.();
   }
 }
 
@@ -206,6 +573,286 @@ function toRgb(hex: string) {
   const blue = (value & 0xff) / 255;
 
   return rgb(red, green, blue);
+}
+
+function applyFormFieldValues(pdfDocument: PDFDocument, formFields: PdfFormField[]): void {
+  if (!formFields.length) {
+    return;
+  }
+
+  const form = pdfDocument.getForm();
+  if (form.hasXFA()) {
+    form.deleteXFA();
+  }
+
+  for (const fieldState of formFields) {
+    const field = form.getFieldMaybe(fieldState.name);
+    if (!field) {
+      continue;
+    }
+
+    switch (fieldState.type) {
+      case 'text':
+        if (field instanceof PDFTextField) {
+          field.setText(fieldState.value || undefined);
+        }
+        break;
+      case 'checkbox':
+        if (field instanceof PDFCheckBox) {
+          if (fieldState.checked) {
+            field.check();
+          } else {
+            field.uncheck();
+          }
+        }
+        break;
+      case 'radio':
+        if (field instanceof PDFRadioGroup) {
+          if (fieldState.value) {
+            field.select(fieldState.value);
+          } else {
+            field.clear();
+          }
+        }
+        break;
+      case 'dropdown':
+        if (field instanceof PDFDropdown) {
+          if (fieldState.value.length) {
+            field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+          } else {
+            field.clear();
+          }
+        }
+        break;
+      case 'optionList':
+        if (field instanceof PDFOptionList) {
+          if (fieldState.value.length) {
+            field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+          } else {
+            field.clear();
+          }
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  form.updateFieldAppearances();
+}
+
+function extractResetFormFields(pdfDocument: PDFDocument, currentFormFields: PdfFormField[]): PdfFormField[] {
+  const form = pdfDocument.getForm();
+  if (form.hasXFA()) {
+    return structuredClone(currentFormFields);
+  }
+
+  return currentFormFields.map((fieldState) => {
+    const field = form.getFieldMaybe(fieldState.name);
+    if (!field) {
+      return fieldState;
+    }
+
+    switch (fieldState.type) {
+      case 'text':
+        return {
+          ...fieldState,
+          value: decodeDefaultTextValue(field.acroField.dict.lookup(PDFName.of('DV')))
+        };
+      case 'checkbox':
+        return {
+          ...fieldState,
+          checked: decodeDefaultCheckboxValue(field.acroField.dict.lookup(PDFName.of('DV')))
+        };
+      case 'radio':
+        return {
+          ...fieldState,
+          value: decodeDefaultChoiceValue(field.acroField.dict.lookup(PDFName.of('DV')))
+        };
+      case 'dropdown':
+      case 'optionList':
+        return {
+          ...fieldState,
+          value: decodeDefaultChoiceValues(field.acroField.dict.lookup(PDFName.of('DV')))
+        };
+      default:
+        return fieldState;
+    }
+  });
+}
+
+function decodeDefaultTextValue(value: unknown): string {
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    return value.decodeText();
+  }
+
+  return '';
+}
+
+function decodeDefaultCheckboxValue(value: unknown): boolean {
+  if (value instanceof PDFName) {
+    return value.decodeText() !== 'Off';
+  }
+
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    return value.decodeText() !== 'Off';
+  }
+
+  return false;
+}
+
+function decodeDefaultChoiceValue(value: unknown): string | null {
+  if (value instanceof PDFName) {
+    const decoded = value.decodeText();
+    return decoded.length ? decoded : null;
+  }
+
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    const decoded = value.decodeText();
+    return decoded.length ? decoded : null;
+  }
+
+  return null;
+}
+
+function decodeDefaultChoiceValues(value: unknown): string[] {
+  if (value instanceof PDFArray) {
+    const values: string[] = [];
+    for (let index = 0; index < value.size(); index += 1) {
+      const entry = value.lookup(index);
+      const decoded = decodeDefaultChoiceValue(entry);
+      if (decoded) {
+        values.push(decoded);
+      }
+    }
+    return values;
+  }
+
+  const single = decodeDefaultChoiceValue(value);
+  return single ? [single] : [];
+}
+
+function buildSubmitFormPayload(formFields: PdfFormField[]): Array<[string, string]> {
+  const payload: Array<[string, string]> = [];
+
+  for (const field of formFields) {
+    switch (field.type) {
+      case 'text':
+        payload.push([field.name, field.value]);
+        break;
+      case 'checkbox':
+        if (field.checked) {
+          payload.push([field.name, 'true']);
+        }
+        break;
+      case 'radio':
+        if (field.value) {
+          payload.push([field.name, field.value]);
+        }
+        break;
+      case 'dropdown':
+      case 'optionList':
+        for (const value of field.value) {
+          payload.push([field.name, value]);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  return payload;
+}
+
+function applyButtonActionToField(
+  pdfDocument: PDFDocument,
+  field: PDFButton,
+  action: PdfButtonAction | null
+): void {
+  if (!action) {
+    return;
+  }
+
+  const widgets = field.acroField.getWidgets();
+  const widget = widgets[0];
+  if (!widget) {
+    return;
+  }
+
+  const actionDict = createButtonActionDict(pdfDocument, action);
+  if (!actionDict) {
+    return;
+  }
+
+  widget.dict.set(PDFName.of('A'), actionDict);
+}
+
+function createButtonActionDict(pdfDocument: PDFDocument, action: PdfButtonAction): PDFDict | null {
+  switch (action.type) {
+    case 'reset':
+      return pdfDocument.context.obj({
+        S: PDFName.of('ResetForm')
+      });
+    case 'submit':
+      if (!action.url) {
+        return null;
+      }
+      return pdfDocument.context.obj({
+        S: PDFName.of('SubmitForm'),
+        F: PDFString.of(action.url),
+        Flags: PDFNumber.of(action.method === 'GET' ? 8 : 0)
+      });
+    case 'mailto':
+    case 'uri':
+      if (!action.url) {
+        return null;
+      }
+      return pdfDocument.context.obj({
+        S: PDFName.of('URI'),
+        URI: PDFString.of(action.url)
+      });
+    case 'unsupported':
+    default:
+      return null;
+  }
+}
+
+async function executeHttpRequest(targetUrl: URL, method: 'GET' | 'POST', body?: string): Promise<void> {
+  const transport = targetUrl.protocol === 'https:' ? https : http;
+
+  await new Promise<void>((resolve, reject) => {
+    const request = transport.request(
+      targetUrl,
+      {
+        method,
+        headers:
+          method === 'POST'
+            ? {
+                'content-type': 'application/x-www-form-urlencoded',
+                'content-length': Buffer.byteLength(body || '').toString()
+              }
+            : undefined
+      },
+      (response) => {
+        const statusCode = response.statusCode ?? 0;
+        response.resume();
+        response.on('end', () => {
+          if (statusCode >= 200 && statusCode < 400) {
+            resolve();
+            return;
+          }
+
+          reject(new Error(`SubmitForm request failed with status ${statusCode}.`));
+        });
+      }
+    );
+
+    request.on('error', reject);
+    if (method === 'POST' && body) {
+      request.write(body);
+    }
+    request.end();
+  });
 }
 
 function addNativeCommentAnnotation(
@@ -304,15 +951,18 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
       const studioData = decodeStudioCommentPayload(
         annotation.lookupMaybe(PDF_STUDIO_COMMENT_KEY, PDFString, PDFHexString)
       );
+      if (!studioData) {
+        continue;
+      }
 
       comments.push({
-        id: studioData?.id || nm || `native-${pageIndex + 1}-${Math.round(rect.x)}-${Math.round(rect.y)}-${index}`,
-        color: studioData?.color || color,
+        id: studioData.id || nm || `native-${pageIndex + 1}-${Math.round(rect.x)}-${Math.round(rect.y)}-${index}`,
+        color: studioData.color || color,
         page: pageIndex + 1,
-        viewportWidth: studioData?.viewportWidth || pageWidth,
-        viewportHeight: studioData?.viewportHeight || pageHeight,
+        viewportWidth: studioData.viewportWidth || pageWidth,
+        viewportHeight: studioData.viewportHeight || pageHeight,
         rects:
-          studioData?.rects.length
+          studioData.rects.length
             ? studioData.rects
             : [
                 {
@@ -328,6 +978,407 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
   });
 
   return comments;
+}
+
+function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
+  const form = pdfDocument.getForm();
+  if (form.hasXFA()) {
+    return [];
+  }
+
+  const pageRefToNumber = new Map<string, number>();
+  const pageDimensions = new Map<number, { width: number; height: number }>();
+  pdfDocument.getPages().forEach((page, index) => {
+    pageRefToNumber.set(page.ref.toString(), index + 1);
+    pageDimensions.set(index + 1, {
+      width: page.getWidth(),
+      height: page.getHeight()
+    });
+  });
+
+  const fields: PdfFormField[] = [];
+
+  for (const field of form.getFields()) {
+    const widgets = extractFieldWidgets(pdfDocument, field.acroField.getWidgets(), pageRefToNumber, pageDimensions);
+    if (!widgets.length) {
+      continue;
+    }
+
+    if (field instanceof PDFTextField) {
+      fields.push({
+        name: field.getName(),
+        type: 'text',
+        readOnly: field.isReadOnly(),
+        value: field.getText() ?? '',
+        multiline: field.isMultiline(),
+        maxLength: field.getMaxLength() ?? null,
+        semantic: detectTextFieldSemantic(field.getName()),
+        widgets
+      });
+      continue;
+    }
+
+    if (field instanceof PDFCheckBox) {
+      fields.push({
+        name: field.getName(),
+        type: 'checkbox',
+        readOnly: field.isReadOnly(),
+        checked: field.isChecked(),
+        widgets
+      });
+      continue;
+    }
+
+    if (field instanceof PDFRadioGroup) {
+      const options = field.getOptions();
+      const widgetsWithOptions: PdfFormFieldWidget[] = widgets.map((widget, index) => ({
+        ...widget,
+        option: options[index] ?? widget.option
+      }));
+      fields.push({
+        name: field.getName(),
+        type: 'radio',
+        readOnly: field.isReadOnly(),
+        value: field.getSelected() ?? null,
+        options,
+        widgets: widgetsWithOptions
+      });
+      continue;
+    }
+
+    if (field instanceof PDFDropdown) {
+      fields.push({
+        name: field.getName(),
+        type: 'dropdown',
+        readOnly: field.isReadOnly(),
+        value: field.getSelected(),
+        options: field.getOptions(),
+        editable: field.isEditable(),
+        multiSelect: field.isMultiselect(),
+        widgets
+      });
+      continue;
+    }
+
+    if (field instanceof PDFOptionList) {
+      fields.push({
+        name: field.getName(),
+        type: 'optionList',
+        readOnly: field.isReadOnly(),
+        value: field.getSelected(),
+        options: field.getOptions(),
+        multiSelect: field.isMultiselect(),
+        widgets
+      });
+      continue;
+    }
+
+    if (field instanceof PDFButton) {
+      fields.push({
+        name: field.getName(),
+        type: 'button',
+        readOnly: field.isReadOnly(),
+        label: extractButtonLabel(field, widgets),
+        action: extractButtonAction(field),
+        widgets
+      });
+    }
+  }
+
+  return fields;
+}
+
+function extractButtonLabel(field: PDFButton, widgets: PdfFormFieldWidget[]): string {
+  const caption = field.acroField
+    .getWidgets()
+    .map((widget) => widget.getAppearanceCharacteristics()?.getCaptions().normal?.trim())
+    .find((value): value is string => Boolean(value));
+
+  if (caption) {
+    return caption;
+  }
+
+  return field.getName().split('.').pop() || `Button ${widgets[0]?.page ?? ''}`.trim();
+}
+
+function extractButtonAction(field: PDFButton): PdfButtonAction | null {
+  const widgets = field.acroField.getWidgets();
+  const candidates: Array<{ action: PdfButtonAction; priority: number }> = [];
+
+  for (const widget of widgets) {
+    const action = extractActionDescriptor(widget.dict.lookupMaybe(PDFName.of('A'), PDFDict));
+    if (action) {
+      candidates.push({ action, priority: 100 });
+    }
+
+    const additionalActions = widget.dict.lookupMaybe(PDFName.of('AA'), PDFDict);
+    if (additionalActions) {
+      for (const [key, priority] of [
+        ['U', 95],
+        ['D', 70],
+        ['PO', 45],
+        ['PC', 40],
+        ['E', 35],
+        ['X', 30],
+        ['Fo', 20],
+        ['Bl', 20],
+        ['PV', 15],
+        ['PI', 15]
+      ] as const) {
+        const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(PDFName.of(key), PDFDict));
+        if (additionalDescriptor) {
+          candidates.push({ action: additionalDescriptor, priority });
+        }
+      }
+    }
+  }
+
+  const directAction = extractActionDescriptor(field.acroField.dict.lookupMaybe(PDFName.of('A'), PDFDict));
+  if (directAction) {
+    candidates.push({ action: directAction, priority: 85 });
+  }
+
+  const additionalActions = field.acroField.dict.lookupMaybe(PDFName.of('AA'), PDFDict);
+  if (additionalActions) {
+    for (const [key, priority] of [
+      ['U', 80],
+      ['D', 60],
+      ['PO', 35],
+      ['PC', 30],
+      ['E', 25],
+      ['X', 20],
+      ['Fo', 10],
+      ['Bl', 10],
+      ['PV', 5],
+      ['PI', 5]
+    ] as const) {
+      const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(PDFName.of(key), PDFDict));
+      if (additionalDescriptor) {
+        candidates.push({ action: additionalDescriptor, priority });
+      }
+    }
+  }
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  candidates.sort((left, right) => buttonActionScore(right) - buttonActionScore(left));
+  return candidates[0]?.action ?? null;
+}
+
+function buttonActionScore(candidate: { action: PdfButtonAction; priority: number }): number {
+  return candidate.priority + buttonActionTypeWeight(candidate.action);
+}
+
+function buttonActionTypeWeight(action: PdfButtonAction): number {
+  switch (action.type) {
+    case 'submit':
+    case 'mailto':
+    case 'uri':
+      return 1000;
+    case 'reset':
+      return 500;
+    case 'unsupported':
+      return 0;
+    default:
+      return 0;
+  }
+}
+
+function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction | null {
+  if (!action) {
+    return null;
+  }
+
+  const subtype = action.lookupMaybe(PDFName.of('S'), PDFName)?.decodeText();
+  if (!subtype) {
+    return null;
+  }
+
+  if (subtype === 'ResetForm') {
+    return {
+      type: 'reset',
+      url: null,
+      method: null,
+      reason: null
+    };
+  }
+
+  if (subtype !== 'SubmitForm') {
+    if (subtype === 'URI') {
+      const uri = decodePdfText(action.lookupMaybe(PDFName.of('URI'), PDFString, PDFHexString));
+      return uri
+        ? {
+            type: uri.startsWith('mailto:') ? 'mailto' : 'uri',
+            url: uri,
+            method: null,
+            reason: null
+          }
+        : {
+            type: 'unsupported',
+            url: null,
+            method: null,
+            reason: 'URI action has no usable target.'
+          };
+    }
+
+    return {
+      type: 'unsupported',
+      url: null,
+      method: null,
+      reason: `Unsupported PDF button action: ${subtype}`
+    };
+  }
+
+  const directTarget = action.lookupMaybe(PDFName.of('F'), PDFString, PDFHexString);
+  const fileSpecTarget = directTarget ? null : action.lookupMaybe(PDFName.of('F'), PDFDict);
+  const url = extractSubmitTargetUrl(directTarget ?? fileSpecTarget ?? undefined);
+  if (!url) {
+    return {
+      type: 'unsupported',
+      url: null,
+      method: null,
+      reason: 'Submit button has no usable target URL.'
+    };
+  }
+
+  if (url.startsWith('mailto:')) {
+    return {
+      type: 'mailto',
+      url,
+      method: null,
+      reason: null
+    };
+  }
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return {
+      type: 'submit',
+      url,
+      method: extractSubmitMethod(action),
+      reason: null
+    };
+  }
+
+  return {
+    type: 'unsupported',
+    url,
+    method: null,
+    reason: `Unsupported submit target: ${url}`
+  };
+}
+
+function extractSubmitTargetUrl(value: PDFDict | PDFString | PDFHexString | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof PDFString || value instanceof PDFHexString) {
+    return value.decodeText().trim() || null;
+  }
+
+  const nested = value.lookupMaybe(PDFName.of('F'), PDFString, PDFHexString);
+  if (nested instanceof PDFString || nested instanceof PDFHexString) {
+    return nested.decodeText().trim() || null;
+  }
+
+  return null;
+}
+
+function extractSubmitMethod(action: PDFDict): 'GET' | 'POST' {
+  const flagsValue = action.lookupMaybe(PDFName.of('Flags'), PDFNumber);
+  if (flagsValue) {
+    const flags = flagsValue.asNumber();
+    if ((flags & 8) !== 0) {
+      return 'GET';
+    }
+  }
+
+  return 'POST';
+}
+
+function extractFieldWidgets(
+  pdfDocument: PDFDocument,
+  widgets: ReturnType<PDFTextField['acroField']['getWidgets']>,
+  pageRefToNumber: Map<string, number>,
+  pageDimensions: Map<number, { width: number; height: number }>
+): PdfFormFieldWidget[] {
+  const normalizedWidgets: PdfFormFieldWidget[] = [];
+
+  widgets.forEach((widget, index) => {
+    const pageNumber = findWidgetPageNumber(pdfDocument, widget, pageRefToNumber);
+    if (!pageNumber) {
+      return;
+    }
+
+    const pageSize = pageDimensions.get(pageNumber);
+    if (!pageSize) {
+      return;
+    }
+
+    const rect = widget.getRectangle();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+
+    normalizedWidgets.push({
+      id: `${pageNumber}:${Math.round(rect.x)}:${Math.round(rect.y)}:${index}`,
+      page: pageNumber,
+      x: rect.x,
+      y: pageSize.height - rect.y - rect.height,
+      width: rect.width,
+      height: rect.height,
+      option: widget.getOnValue()?.decodeText()
+    });
+  });
+
+  return normalizedWidgets;
+}
+
+function findWidgetPageNumber(
+  pdfDocument: PDFDocument,
+  widget: ReturnType<PDFTextField['acroField']['getWidgets']>[number],
+  pageRefToNumber: Map<string, number>
+): number | null {
+  const pageRef = widget.P();
+  if (pageRef) {
+    return pageRefToNumber.get(pageRef.toString()) ?? null;
+  }
+
+  for (const [pageIndex, page] of pdfDocument.getPages().entries()) {
+    const annots = page.node.Annots();
+    if (!annots) {
+      continue;
+    }
+
+    for (let index = 0; index < annots.size(); index += 1) {
+      const annotation = annots.lookupMaybe(index, PDFDict);
+      if (annotation === widget.dict) {
+        return pageIndex + 1;
+      }
+    }
+  }
+
+  return null;
+}
+
+function detectTextFieldSemantic(name: string): PdfTextFieldSemantic {
+  const normalized = name.toLowerCase();
+
+  if (normalized.includes(':signer:fullname') || normalized.includes('fullname') || normalized.includes('full_name')) {
+    return 'fullName';
+  }
+
+  if (normalized.includes(':signer:email') || normalized.includes('email') || normalized.includes('e-mail')) {
+    return 'email';
+  }
+
+  if (normalized.includes(':signer:date') || normalized.endsWith('date') || normalized.includes('_date')) {
+    return 'date';
+  }
+
+  return 'generic';
 }
 
 function mergeComments(studioComments: AnnotationComment[], nativeComments: AnnotationComment[]): AnnotationComment[] {

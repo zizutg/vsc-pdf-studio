@@ -12,7 +12,8 @@ function createDefaultCapabilities() {
             search: true,
             outline: true,
             pageNavigation: true,
-            copySelection: true
+            copySelection: true,
+            formFill: true
         }
     };
 }

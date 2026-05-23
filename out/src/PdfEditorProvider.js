@@ -72,8 +72,12 @@ class PdfEditorProvider {
                     await this.postInitialState(document.uri, webviewPanel.webview);
                     break;
                 }
-                case 'annotationsChanged': {
-                    await this.handleAnnotationSave(document.uri, message.payload.annotations, webviewPanel.webview);
+                case 'documentChanged': {
+                    await this.handleDocumentSave(document.uri, message.payload.annotations, message.payload.formFields, webviewPanel.webview);
+                    break;
+                }
+                case 'buttonActivated': {
+                    await this.handleButtonActivated(document.uri, message.payload.name, message.payload.annotations, message.payload.formFields, webviewPanel.webview);
                     break;
                 }
             }
@@ -83,12 +87,14 @@ class PdfEditorProvider {
         try {
             const pdfBuffer = await this.saveManager.getPdfBytes(uri);
             const annotations = await this.saveManager.getAnnotations(uri);
+            const formFields = await this.saveManager.getFormFields(uri);
             const message = {
                 type: 'init',
                 payload: {
                     fileName: path.basename(uri.fsPath),
                     pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
                     annotations,
+                    formFields,
                     capabilities: (0, capabilities_1.createDefaultCapabilities)()
                 }
             };
@@ -98,19 +104,59 @@ class PdfEditorProvider {
             await this.postError(webview, error);
         }
     }
-    async handleAnnotationSave(uri, annotations, webview) {
+    async handleDocumentSave(uri, annotations, formFields, webview) {
         try {
-            await this.saveManager.save(uri, annotations);
-            const message = {
-                type: 'saved',
-                payload: {
-                    savedAt: new Date().toISOString()
-                }
-            };
-            webview.postMessage(message);
+            await this.saveManager.saveDocument(uri, annotations, formFields);
+            await this.postSaved(webview);
         }
         catch (error) {
             await this.postError(webview, error);
+        }
+    }
+    async handleButtonActivated(uri, buttonName, annotations, formFields, webview) {
+        try {
+            const action = await this.saveManager.getButtonAction(uri, buttonName);
+            if (!action) {
+                throw new Error('This PDF button does not expose a supported action.');
+            }
+            await this.saveManager.saveDocument(uri, annotations, formFields);
+            if (action.type === 'reset') {
+                const resetFormFields = await this.saveManager.getResetFormFields(uri);
+                await this.saveManager.saveDocument(uri, annotations, resetFormFields);
+                await webview.postMessage({
+                    type: 'formFieldsReplaced',
+                    payload: {
+                        formFields: resetFormFields
+                    }
+                });
+                await this.postSaved(webview);
+                return;
+            }
+            await this.executeButtonAction(action, formFields);
+            await this.postSaved(webview);
+        }
+        catch (error) {
+            await this.postError(webview, error);
+        }
+    }
+    async executeButtonAction(action, formFields) {
+        switch (action.type) {
+            case 'submit':
+                await this.saveManager.submitForm(formFields, action);
+                return;
+            case 'mailto':
+            case 'uri':
+                if (!action.url) {
+                    throw new Error('This PDF button does not expose a usable target.');
+                }
+                await vscode.env.openExternal(vscode.Uri.parse(action.url));
+                return;
+            case 'unsupported':
+                throw new Error(action.reason || 'This PDF button uses an unsupported action.');
+            case 'reset':
+                return;
+            default:
+                throw new Error('This PDF button does not expose a supported action.');
         }
     }
     async postError(webview, error) {
@@ -118,6 +164,15 @@ class PdfEditorProvider {
             type: 'error',
             payload: {
                 message: error instanceof Error ? error.message : 'Unknown error'
+            }
+        };
+        await webview.postMessage(message);
+    }
+    async postSaved(webview) {
+        const message = {
+            type: 'saved',
+            payload: {
+                savedAt: new Date().toISOString()
             }
         };
         await webview.postMessage(message);

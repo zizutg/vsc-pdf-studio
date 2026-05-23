@@ -5,7 +5,8 @@ export type StudioFeature =
   | 'search'
   | 'outline'
   | 'pageNavigation'
-  | 'copySelection';
+  | 'copySelection'
+  | 'formFill';
 
 export interface CapabilitySnapshot {
   tier: 'free' | 'pro';
@@ -22,7 +23,8 @@ export function createDefaultCapabilities(): CapabilitySnapshot {
       search: true,
       outline: true,
       pageNavigation: true,
-      copySelection: true
+      copySelection: true,
+      formFill: true
     }
   };
 }

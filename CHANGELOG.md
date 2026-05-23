@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Added native PDF AcroForm filling for existing text fields, checkboxes, radio groups, dropdowns, and option lists
+- Saved supported form values back through standard PDF form mechanisms for compatibility with other PDF editors and readers
+- Added signer-aware handling for full name, email, and date text fields in supported PDF forms
+- Added native PDF button-field recognition and visible button rendering
+- Added safe native PDF button actions for ResetForm, HTTP(S) SubmitForm, and mailto targets
+- Broadened native button action detection to cover more PDF button event dictionaries and standard URI link actions
+- Stopped Studio from recreating replacement PDF button widgets during form-base rebuilds, preserving native button behavior more reliably
+- Reset form actions now use the PDF field defaults instead of Studio's opened-session snapshot, improving cross-editor reset behavior
+- Limited native comment sync to Studio-managed PDF comments so external editor round-trips stop creating stray comment markers
+
 ## 0.0.3
 
 - Reduced packaged extension size by trimming shipped runtime dependency files without changing functionality

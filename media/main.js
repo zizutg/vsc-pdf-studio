@@ -78,6 +78,7 @@ const state = {
     highlights: [],
     comments: []
   },
+  formFields: [],
   history: [],
   historyIndex: 0,
   openCommentId: null,
@@ -87,6 +88,7 @@ const state = {
   selectionAction: null,
   saveInFlight: false,
   saveQueued: false,
+  lastButtonActivation: null,
   sidebarOpen: false,
   sidebarTab: 'outline',
   activeOutlineKey: null,
@@ -249,6 +251,7 @@ let drawingLayer = null;
 let zoomRerenderTimer = null;
 let zoomRenderRequestId = 0;
 let resizeRerenderTimer = null;
+let formSaveTimer = null;
 
 const autoSaver = createAutoSaver(() => {
   requestSave();
@@ -993,11 +996,381 @@ function renderSelectionAction() {
   workspaceEl.append(actions);
 }
 
+function renderFormFields() {
+  for (const pageEntry of state.pageEntries) {
+    pageEntry.formLayer.replaceChildren();
+  }
+
+  for (const field of state.formFields) {
+    for (const widget of field.widgets) {
+      const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === widget.page);
+      if (!pageEntry) {
+        continue;
+      }
+
+      const scaleX = pageEntry.width / Math.max(pageEntry.pdfWidth || pageEntry.width, 1);
+      const scaleY = pageEntry.height / Math.max(pageEntry.pdfHeight || pageEntry.height, 1);
+      const left = widget.x * scaleX;
+      const top = widget.y * scaleY;
+      const width = widget.width * scaleX;
+      const height = widget.height * scaleY;
+
+      let control = null;
+
+      if (field.type === 'text') {
+        control = document.createElement(field.multiline ? 'textarea' : 'input');
+        control.className = 'pdf-form-control pdf-form-text';
+        if (control instanceof HTMLInputElement) {
+          control.type = field.semantic === 'email' ? 'email' : field.semantic === 'date' ? 'date' : 'text';
+          control.value = field.semantic === 'date' ? normalizeDateValueForInput(field.value) : field.value;
+          if (field.semantic === 'fullName') {
+            control.autocomplete = 'name';
+          } else if (field.semantic === 'email') {
+            control.autocomplete = 'email';
+            control.inputMode = 'email';
+            control.spellcheck = false;
+          } else if (field.semantic === 'date') {
+            control.autocomplete = 'off';
+            control.inputMode = 'none';
+          }
+        } else {
+          control.value = field.value;
+        }
+        if (field.maxLength) {
+          control.maxLength = field.maxLength;
+        }
+        control.disabled = field.readOnly || state.mode !== 'select';
+        applyTextFieldValidationState(control, field, field.value);
+        control.addEventListener('input', () => {
+          const nextValue = field.semantic === 'date' ? normalizeDateValueForStorage(control.value) : control.value;
+          const validationError = getTextFieldValidationError(field, nextValue);
+          applyTextFieldValidationState(control, field, nextValue);
+          if (validationError) {
+            return;
+          }
+          updateFormFieldValue(field.name, nextValue);
+          queueFormFieldSave();
+        });
+      } else if (field.type === 'checkbox') {
+        control = document.createElement('input');
+        control.type = 'checkbox';
+        control.className = 'pdf-form-control pdf-form-check';
+        control.checked = field.checked;
+        control.disabled = field.readOnly || state.mode !== 'select';
+        control.addEventListener('change', () => {
+          updateFormFieldValue(field.name, control.checked);
+          queueFormFieldSave();
+        });
+      } else if (field.type === 'radio') {
+        control = document.createElement('input');
+        control.type = 'radio';
+        control.className = 'pdf-form-control pdf-form-check';
+        control.name = `pdf-radio-${slugify(field.name)}`;
+        control.checked = field.value === (widget.option ?? null);
+        control.disabled = field.readOnly || state.mode !== 'select';
+        control.addEventListener('change', () => {
+          if (!control.checked) {
+            return;
+          }
+
+          updateFormFieldValue(field.name, widget.option ?? null);
+          renderFormFields();
+          queueFormFieldSave();
+        });
+      } else if (field.type === 'dropdown') {
+        if (field.editable) {
+          control = document.createElement('input');
+          control.type = 'text';
+          control.className = 'pdf-form-control pdf-form-text';
+          control.value = field.value[0] ?? '';
+          control.disabled = field.readOnly || state.mode !== 'select';
+          const listId = `pdf-form-list-${slugify(field.name)}-${slugify(widget.id)}`;
+          control.setAttribute('list', listId);
+          const datalist = document.createElement('datalist');
+          datalist.id = listId;
+          for (const option of field.options) {
+            const optionEl = document.createElement('option');
+            optionEl.value = option;
+            datalist.append(optionEl);
+          }
+          pageEntry.formLayer.append(datalist);
+          control.addEventListener('input', () => {
+            updateFormFieldValue(field.name, control.value ? [control.value] : []);
+            queueFormFieldSave();
+          });
+        } else {
+          control = createSelectControl(field);
+        }
+      } else if (field.type === 'optionList') {
+        control = createSelectControl(field);
+      } else if (field.type === 'button') {
+        control = document.createElement('button');
+        control.type = 'button';
+        control.className = 'pdf-form-control pdf-form-button';
+        control.textContent = field.label;
+        const actionState = getButtonActionState(field);
+        control.disabled = field.readOnly || state.mode !== 'select' || !actionState.enabled;
+        control.dataset.enabled = String(actionState.enabled);
+        control.title = actionState.title;
+        control.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          activateButtonField(field.name);
+        });
+      }
+
+      if (!control) {
+        continue;
+      }
+
+      control.dataset.readOnly = String(Boolean(field.readOnly));
+      if (!control.dataset.enabled) {
+        control.dataset.enabled = 'true';
+      }
+      control.style.left = `${left}px`;
+      control.style.top = `${top}px`;
+      control.style.width = `${width}px`;
+      control.style.height = `${height}px`;
+      pageEntry.formLayer.append(control);
+    }
+  }
+}
+
+function getTextFieldValidationError(field, value) {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (field.semantic === 'email') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedValue) ? null : 'Enter a valid email address.';
+  }
+
+  if (field.semantic === 'date') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(normalizedValue)) {
+      return null;
+    }
+    return 'Use YYYY-MM-DD or MM/DD/YYYY.';
+  }
+
+  return null;
+}
+
+function normalizeDateValueForInput(value) {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return '';
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  const match = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) {
+    return normalizedValue;
+  }
+
+  const [, month, day, year] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function normalizeDateValueForStorage(value) {
+  return normalizeDateValueForInput(value);
+}
+
+function applyTextFieldValidationState(control, field, value) {
+  const validationError = getTextFieldValidationError(field, value);
+  control.classList.toggle('is-invalid', Boolean(validationError));
+  control.setAttribute('aria-invalid', validationError ? 'true' : 'false');
+
+  if (validationError) {
+    control.title = validationError;
+    return;
+  }
+
+  if (field.semantic === 'date') {
+    control.title = control instanceof HTMLInputElement && control.type === 'date'
+      ? 'Pick a date from the calendar.'
+      : 'Accepted formats: YYYY-MM-DD or MM/DD/YYYY';
+  } else {
+    control.removeAttribute('title');
+  }
+}
+
+function createSelectControl(field) {
+  const select = document.createElement('select');
+  select.className = `pdf-form-control pdf-form-select${field.type === 'optionList' ? ' is-list' : ''}`;
+  select.disabled = field.readOnly || state.mode !== 'select';
+  if (field.multiSelect) {
+    select.multiple = true;
+  } else if (field.type === 'dropdown') {
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = '';
+    emptyOption.selected = field.value.length === 0;
+    select.append(emptyOption);
+  }
+
+  for (const option of field.options) {
+    const optionEl = document.createElement('option');
+    optionEl.value = option;
+    optionEl.textContent = option;
+    optionEl.selected = field.value.includes(option);
+    select.append(optionEl);
+  }
+
+  select.addEventListener('change', () => {
+    const selectedValues = Array.from(select.selectedOptions).map((option) => option.value);
+    updateFormFieldValue(field.name, selectedValues);
+    queueFormFieldSave();
+  });
+
+  return select;
+}
+
+function getButtonActionState(field) {
+  if (!field.action) {
+    return {
+      enabled: false,
+      title: 'This PDF button has no supported action.'
+    };
+  }
+
+  if (field.action.type === 'unsupported') {
+    return {
+      enabled: false,
+      title: field.action.reason || 'This PDF button uses an unsupported action.'
+    };
+  }
+
+  if (field.action.type === 'submit') {
+    return {
+      enabled: Boolean(field.action.url),
+      title: field.action.url ? `Submit form to ${field.action.url}` : 'This PDF button has no usable submit target.'
+    };
+  }
+
+  if (field.action.type === 'mailto') {
+    return {
+      enabled: Boolean(field.action.url),
+      title: field.action.url ? `Open email client for ${field.action.url}` : 'This PDF button has no usable mail target.'
+    };
+  }
+
+  if (field.action.type === 'uri') {
+    return {
+      enabled: Boolean(field.action.url),
+      title: field.action.url ? `Open ${field.action.url}` : 'This PDF button has no usable link target.'
+    };
+  }
+
+  if (field.action.type === 'reset') {
+    return {
+      enabled: true,
+      title: 'Reset form fields to the values from when this document was opened.'
+    };
+  }
+
+  return {
+    enabled: false,
+    title: 'This PDF button has no supported action.'
+  };
+}
+
+function updateFormFieldValue(name, nextValue) {
+  state.formFields = state.formFields.map((field) => {
+    if (field.name !== name) {
+      return field;
+    }
+
+    if (field.type === 'text') {
+      return {
+        ...field,
+        value: typeof nextValue === 'string' ? nextValue : ''
+      };
+    }
+
+    if (field.type === 'checkbox') {
+      return {
+        ...field,
+        checked: Boolean(nextValue)
+      };
+    }
+
+    if (field.type === 'radio') {
+      return {
+        ...field,
+        value: typeof nextValue === 'string' && nextValue.length ? nextValue : null
+      };
+    }
+
+    return {
+      ...field,
+      value: Array.isArray(nextValue) ? nextValue : []
+    };
+  });
+}
+
+function queueFormFieldSave() {
+  if (formSaveTimer) {
+    window.clearTimeout(formSaveTimer);
+  }
+
+  formSaveTimer = window.setTimeout(() => {
+    formSaveTimer = null;
+    requestSave();
+  }, 300);
+}
+
+function activateButtonField(name) {
+  const now = Date.now();
+  if (
+    state.lastButtonActivation &&
+    state.lastButtonActivation.name === name &&
+    now < state.lastButtonActivation.until
+  ) {
+    return;
+  }
+
+  if (formSaveTimer) {
+    window.clearTimeout(formSaveTimer);
+    formSaveTimer = null;
+  }
+
+  state.lastButtonActivation = {
+    name,
+    until: now + 1000
+  };
+  state.saveInFlight = true;
+  state.saveQueued = false;
+
+  vscode.postMessage({
+    type: 'buttonActivated',
+    payload: {
+      name,
+      annotations: {
+        version: state.sessionAnnotations.version,
+        strokes: state.sessionAnnotations.strokes,
+        highlights: state.sessionAnnotations.highlights,
+        comments: state.sessionAnnotations.comments,
+        updatedAt: new Date().toISOString()
+      },
+      formFields: state.formFields
+    }
+  });
+}
+
+function slugify(value) {
+  return value.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+}
+
 function applySessionAnnotations(annotations, options = {}) {
   const nextAnnotations = cloneAnnotations(annotations);
   state.sessionAnnotations = nextAnnotations;
   drawingLayer?.load(nextAnnotations.strokes);
   renderHighlights(nextAnnotations.highlights);
+  renderFormFields();
   renderComments(nextAnnotations.comments);
   renderSelectionAction();
 
@@ -1028,7 +1401,7 @@ function requestSave() {
   state.saveQueued = false;
 
   vscode.postMessage({
-    type: 'annotationsChanged',
+    type: 'documentChanged',
     payload: {
       annotations: {
         version: state.sessionAnnotations.version,
@@ -1036,7 +1409,8 @@ function requestSave() {
         highlights: state.sessionAnnotations.highlights,
         comments: state.sessionAnnotations.comments,
         updatedAt: new Date().toISOString()
-      }
+      },
+      formFields: state.formFields
     }
   });
 }
@@ -1092,6 +1466,7 @@ async function rerenderPages() {
   });
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
+  renderFormFields();
   renderComments(state.sessionAnnotations.comments);
   updateSearchResults({ preserveActive: true });
   renderSidebar();
@@ -1332,11 +1707,17 @@ function updateInteractionMode() {
 
   for (const pageEntry of state.pageEntries) {
     const textInteractionEnabled = state.mode === 'select' || state.mode === 'highlight' || state.mode === 'comment';
+    const formInteractionEnabled = state.mode === 'select';
     pageEntry.drawingCanvas.style.pointerEvents = textInteractionEnabled ? 'none' : 'auto';
     pageEntry.drawingCanvas.style.cursor =
       state.mode === 'erase' ? 'not-allowed' : textInteractionEnabled ? 'text' : 'crosshair';
     pageEntry.textLayer.style.userSelect = textInteractionEnabled ? 'text' : 'none';
     pageEntry.textLayer.style.pointerEvents = textInteractionEnabled ? 'auto' : 'none';
+    pageEntry.formLayer.classList.toggle('is-disabled', !formInteractionEnabled);
+    for (const control of pageEntry.formLayer.querySelectorAll('.pdf-form-control')) {
+      control.disabled =
+        control.dataset.readOnly === 'true' || control.dataset.enabled === 'false' || !formInteractionEnabled;
+    }
   }
 }
 
@@ -1991,6 +2372,7 @@ window.addEventListener('message', async (event) => {
     state.fileName = message.payload.fileName;
     state.pdfBase64 = message.payload.pdfBase64;
     state.sessionAnnotations = structuredClone(message.payload.annotations);
+    state.formFields = structuredClone(message.payload.formFields);
     state.history = [structuredClone(state.sessionAnnotations)];
     state.historyIndex = 0;
     state.openCommentId = null;
@@ -2003,7 +2385,9 @@ window.addEventListener('message', async (event) => {
     state.searchMatches = [];
     state.activeSearchMatchIndex = -1;
     state.pageLayout = 'single';
+    state.mode = 'select';
     state.showAllComments = false;
+    state.lastButtonActivation = null;
     setColorPopoverOpen(false);
     searchInputEl.value = '';
     updateSearchUI();
@@ -2026,6 +2410,12 @@ window.addEventListener('message', async (event) => {
     if (state.saveQueued) {
       requestSave();
     }
+  }
+
+  if (message.type === 'formFieldsReplaced') {
+    state.formFields = structuredClone(message.payload.formFields);
+    renderFormFields();
+    updateInteractionMode();
   }
 
   if (message.type === 'error') {

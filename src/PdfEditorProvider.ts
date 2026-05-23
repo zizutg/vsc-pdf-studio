@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AnnotationDocument } from '../models/annotation';
+import type { PdfButtonAction, PdfFormField } from '../models/formField';
 import { PDF_STUDIO_VIEW_TYPE } from './constants';
 import { createDefaultCapabilities } from './features/capabilities';
 import type { ExtensionToWebviewMessage } from './messaging';
@@ -50,8 +51,23 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
           await this.postInitialState(document.uri, webviewPanel.webview);
           break;
         }
-        case 'annotationsChanged': {
-          await this.handleAnnotationSave(document.uri, message.payload.annotations, webviewPanel.webview);
+        case 'documentChanged': {
+          await this.handleDocumentSave(
+            document.uri,
+            message.payload.annotations,
+            message.payload.formFields,
+            webviewPanel.webview
+          );
+          break;
+        }
+        case 'buttonActivated': {
+          await this.handleButtonActivated(
+            document.uri,
+            message.payload.name,
+            message.payload.annotations,
+            message.payload.formFields,
+            webviewPanel.webview
+          );
           break;
         }
       }
@@ -62,6 +78,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     try {
       const pdfBuffer = await this.saveManager.getPdfBytes(uri);
       const annotations = await this.saveManager.getAnnotations(uri);
+      const formFields = await this.saveManager.getFormFields(uri);
 
       const message: ExtensionToWebviewMessage = {
         type: 'init',
@@ -69,6 +86,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
           fileName: path.basename(uri.fsPath),
           pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
           annotations,
+          formFields,
           capabilities: createDefaultCapabilities()
         }
       };
@@ -79,24 +97,73 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     }
   }
 
-  private async handleAnnotationSave(
+  private async handleDocumentSave(
     uri: vscode.Uri,
     annotations: AnnotationDocument,
+    formFields: PdfFormField[],
     webview: vscode.Webview
   ): Promise<void> {
     try {
-      await this.saveManager.save(uri, annotations);
-
-      const message: ExtensionToWebviewMessage = {
-        type: 'saved',
-        payload: {
-          savedAt: new Date().toISOString()
-        }
-      };
-
-      webview.postMessage(message);
+      await this.saveManager.saveDocument(uri, annotations, formFields);
+      await this.postSaved(webview);
     } catch (error) {
       await this.postError(webview, error);
+    }
+  }
+
+  private async handleButtonActivated(
+    uri: vscode.Uri,
+    buttonName: string,
+    annotations: AnnotationDocument,
+    formFields: PdfFormField[],
+    webview: vscode.Webview
+  ): Promise<void> {
+    try {
+      const action = await this.saveManager.getButtonAction(uri, buttonName);
+      if (!action) {
+        throw new Error('This PDF button does not expose a supported action.');
+      }
+
+      await this.saveManager.saveDocument(uri, annotations, formFields);
+
+      if (action.type === 'reset') {
+        const resetFormFields = await this.saveManager.getResetFormFields(uri);
+        await this.saveManager.saveDocument(uri, annotations, resetFormFields);
+        await webview.postMessage({
+          type: 'formFieldsReplaced',
+          payload: {
+            formFields: resetFormFields
+          }
+        } satisfies ExtensionToWebviewMessage);
+        await this.postSaved(webview);
+        return;
+      }
+
+      await this.executeButtonAction(action, formFields);
+      await this.postSaved(webview);
+    } catch (error) {
+      await this.postError(webview, error);
+    }
+  }
+
+  private async executeButtonAction(action: PdfButtonAction, formFields: PdfFormField[]): Promise<void> {
+    switch (action.type) {
+      case 'submit':
+        await this.saveManager.submitForm(formFields, action);
+        return;
+      case 'mailto':
+      case 'uri':
+        if (!action.url) {
+          throw new Error('This PDF button does not expose a usable target.');
+        }
+        await vscode.env.openExternal(vscode.Uri.parse(action.url));
+        return;
+      case 'unsupported':
+        throw new Error(action.reason || 'This PDF button uses an unsupported action.');
+      case 'reset':
+        return;
+      default:
+        throw new Error('This PDF button does not expose a supported action.');
     }
   }
 
@@ -105,6 +172,17 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
       type: 'error',
       payload: {
         message: error instanceof Error ? error.message : 'Unknown error'
+      }
+    };
+
+    await webview.postMessage(message);
+  }
+
+  private async postSaved(webview: vscode.Webview): Promise<void> {
+    const message: ExtensionToWebviewMessage = {
+      type: 'saved',
+      payload: {
+        savedAt: new Date().toISOString()
       }
     };
 

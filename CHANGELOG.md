@@ -1,22 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.0.4
 
-- Replaced feature-specific color swatch access with one shared toolbar color button for all color-aware tools
-- Added a Strike Out action to the selection mini toolbar and imported native StrikeOut annotations
-- Added an Underline action to the selection mini toolbar before Bookmark
-- Added a Bookmark action to the selection mini toolbar for quick Studio bookmark creation
-- Made Studio bookmark add/remove participate in undo/redo and insert new bookmarks in page/position order
-- Surfaced external PDF outline entries as first-class bookmarks in Studio navigation, with clearer labeling and page metadata
-- Added native PDF AcroForm filling for existing text fields, checkboxes, radio groups, dropdowns, and option lists
-- Saved supported form values back through standard PDF form mechanisms for compatibility with other PDF editors and readers
-- Added signer-aware handling for full name, email, and date text fields in supported PDF forms
-- Added native PDF button-field recognition and visible button rendering
-- Added safe native PDF button actions for ResetForm, HTTP(S) SubmitForm, and mailto targets
-- Broadened native button action detection to cover more PDF button event dictionaries and standard URI link actions
-- Stopped Studio from recreating replacement PDF button widgets during form-base rebuilds, preserving native button behavior more reliably
-- Reset form actions now use the PDF field defaults instead of Studio's opened-session snapshot, improving cross-editor reset behavior
-- Limited native comment sync to Studio-managed PDF comments so external editor round-trips stop creating stray comment markers
+- Added PDF form filling for existing native fields, including text, checkbox, radio, dropdown, option list, and supported button actions
+- Improved cross-editor compatibility for form values, reset behavior, comments, and imported markup from other PDF tools
+- Added bookmark support in the navigation sidebar, including external PDF bookmarks and quick bookmark creation from the selection mini toolbar
+- Added Underline and Strike Out actions to the selection mini toolbar and imported native Underline/StrikeOut annotations
+- Replaced per-feature color access with one shared toolbar color button plus custom color selection from the More menu
 
 ## 0.0.3
 

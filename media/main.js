@@ -148,6 +148,9 @@ app.innerHTML = `
         </div>
         <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
         <button type="button" id="comment-views-toggle" aria-label="Show all comments" title="Show all comments">${icons.commentsExpanded}</button>
+        <button type="button" id="color-button" aria-label="Annotation color" title="Annotation color">
+          <span class="toolbar-color-chip" id="color-chip" aria-hidden="true"></span>
+        </button>
         <div class="color-popover" id="color-popover" hidden>
           <div class="comment-popover-controls">
             <div class="color-palette" id="color-palette">
@@ -237,6 +240,8 @@ const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
 const commentViewsToggleEl = document.querySelector('#comment-views-toggle');
+const colorButtonEl = document.querySelector('#color-button');
+const colorChipEl = document.querySelector('#color-chip');
 const searchButtonEl = document.querySelector('#search-button');
 const searchPanelEl = document.querySelector('#search-panel');
 const searchInputEl = document.querySelector('#search-input');
@@ -1659,6 +1664,8 @@ function updateCurrentPageFromScroll() {
 function setActiveColor(color) {
   state.color = color;
   strokeColorEl.value = color;
+  colorChipEl.style.backgroundColor = color;
+  colorButtonEl.style.setProperty('--active-color', color);
 
   for (const swatch of colorPaletteEl.querySelectorAll('.color-swatch')) {
     swatch.classList.toggle('is-active', swatch.dataset.color === color);
@@ -1724,23 +1731,19 @@ function getCommentOverlayPlacement({
   };
 }
 
-function setColorPopoverOpen(nextOpen, owner = state.colorPopoverOwner ?? state.mode) {
-  const canOpen = owner === 'highlight' || owner === 'annotate' || owner === 'comment';
-  const shouldOpen = nextOpen && canOpen;
-  state.colorPopoverOwner = shouldOpen ? owner : null;
+function setColorPopoverOpen(nextOpen) {
+  const shouldOpen = Boolean(nextOpen);
+  state.colorPopoverOwner = shouldOpen ? 'color' : null;
   colorPopoverEl.hidden = !shouldOpen;
+  colorButtonEl.classList.toggle('is-active', shouldOpen);
 
   if (!shouldOpen) {
     colorPopoverEl.style.removeProperty('--popover-left');
     return;
   }
 
-  const triggerButton =
-    owner === 'comment'
-      ? commentButtonEl
-      : modeToggleEl.querySelector(`.mode-button[data-mode="${owner}"]`);
   const toolbarRect = toolbarEl.getBoundingClientRect();
-  const buttonRect = triggerButton?.getBoundingClientRect();
+  const buttonRect = colorButtonEl?.getBoundingClientRect();
   if (!buttonRect) {
     colorPopoverEl.style.setProperty('--popover-left', '0px');
     return;
@@ -1813,7 +1816,7 @@ function jumpToPage(pageNumber, outlineKey = null, topRatio = null) {
 function setMode(mode) {
   collapseCommentsForModeChange(mode);
   state.mode = mode;
-  setColorPopoverOpen(mode === 'highlight' || mode === 'annotate' || mode === 'comment', mode);
+  setColorPopoverOpen(false);
   updateInteractionMode();
 }
 
@@ -2430,6 +2433,10 @@ commentViewsToggleEl.addEventListener('click', () => {
   renderComments(state.sessionAnnotations.comments);
 });
 
+colorButtonEl.addEventListener('click', () => {
+  setColorPopoverOpen(colorPopoverEl.hidden);
+});
+
 menuButtonEl.addEventListener('click', () => {
   setMenuOpen(!state.menuOpen);
 });
@@ -2448,7 +2455,7 @@ strokeColorEl.addEventListener('input', () => {
 });
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.mode-wrap, #comment-button, #comment-views-toggle, #color-popover')) {
+  if (!event.target.closest('#color-button, #color-popover')) {
     setColorPopoverOpen(false);
   }
 

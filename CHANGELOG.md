@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Replaced feature-specific color swatch access with one shared toolbar color button for all color-aware tools
 - Added a Strike Out action to the selection mini toolbar and imported native StrikeOut annotations
 - Added an Underline action to the selection mini toolbar before Bookmark
 - Added a Bookmark action to the selection mini toolbar for quick Studio bookmark creation

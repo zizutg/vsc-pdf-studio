@@ -521,11 +521,46 @@ body {
   align-items: center;
   justify-content: center;
   padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-button-border, color-mix(in srgb, var(--border) 84%, transparent));
   font-weight: 600;
-  color: color-mix(in srgb, var(--text) 92%, #cbd5e1);
-  background: color-mix(in srgb, var(--panel-2) 88%, #ffffff);
-  cursor: default;
+  letter-spacing: 0.01em;
+  color: var(--vscode-button-foreground, #ffffff);
+  background: var(--vscode-button-background, #2563eb);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--vscode-editor-background, #0b1220) 68%, transparent);
+  cursor: pointer;
   opacity: 1;
+}
+
+.pdf-form-button:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground, color-mix(in srgb, var(--vscode-button-background, #2563eb) 88%, #ffffff));
+}
+
+.pdf-form-button.is-studio-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-editor-background, #0b1220) 10%, transparent);
+  pointer-events: none;
+}
+
+.pdf-form-button[data-action-type='reset'] {
+  background: color-mix(in srgb, var(--vscode-button-secondaryBackground, #374151) 92%, var(--vscode-button-background, #2563eb));
+  color: var(--vscode-button-secondaryForeground, #f8fafc);
+  border-color: var(--vscode-button-border, color-mix(in srgb, var(--border) 84%, transparent));
+}
+
+.pdf-form-button[data-action-type='reset']:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--vscode-button-secondaryBackground, #374151) 85%, #ffffff));
+}
+
+.pdf-form-button:disabled {
+  cursor: default;
+  background: var(--vscode-button-secondaryBackground, color-mix(in srgb, var(--panel-2) 92%, #ffffff));
+  color: var(--vscode-disabledForeground, color-mix(in srgb, var(--text) 55%, transparent));
+  border-color: color-mix(in srgb, var(--border) 72%, transparent);
+  box-shadow: none;
 }
 
 .pdf-form-control:focus {
@@ -639,6 +674,8 @@ body {
 .sidebar-item-meta {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
+  justify-self: end;
 }
 
 .page-nav-item {

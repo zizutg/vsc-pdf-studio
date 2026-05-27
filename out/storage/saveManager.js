@@ -54,6 +54,10 @@ class SaveManager {
         const cacheKey = pdfUri.toString();
         return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
     }
+    async getLivePdfBytes(pdfUri) {
+        await this.ensureSessionStateFresh(pdfUri);
+        return new Uint8Array(await fs.readFile(pdfUri.fsPath));
+    }
     async getAnnotations(pdfUri) {
         await this.ensureSessionStateFresh(pdfUri);
         const cacheKey = pdfUri.toString();
@@ -183,7 +187,7 @@ class SaveManager {
             : null;
         const sanitizedAnnotations = parseStoredAnnotations(annotationJson);
         const embeddedBase = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY));
-        const basePdfBytes = await resolveSessionBasePdfBytes(pdfBytes, pdfDocument, formFields, embeddedBase, hasRenderableStudioMarkup(sanitizedAnnotations));
+        const basePdfBytes = await resolveSessionBasePdfBytes(pdfBytes, pdfDocument, formFields, embeddedBase, sanitizedAnnotations);
         this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
         if (!annotationJson) {
             this.sessionAnnotations.set(cacheKey, {
@@ -242,7 +246,7 @@ function hasRenderableStudioMarkup(annotations) {
         annotations.highlights.length > 0 ||
         annotations.comments.length > 0);
 }
-async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFormFields, embeddedBase, hasStudioMarkup) {
+async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFormFields, embeddedBase, annotations) {
     if (!(embeddedBase instanceof pdf_lib_1.PDFRawStream)) {
         return livePdfBytes;
     }
@@ -254,8 +258,13 @@ async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFor
         const basePdfDocument = await pdf_lib_1.PDFDocument.load(embeddedBaseBytes);
         const livePageCount = livePdfDocument.getPageCount();
         const basePageCount = basePdfDocument.getPageCount();
+        const pagesWithStudioMarkup = collectPagesWithStudioMarkup(annotations);
         if (livePageCount > basePageCount) {
             return materializeExternalPageAdditionsOnBase(embeddedBaseBytes, livePdfBytes, basePageCount, livePageCount);
+        }
+        const changedPageIndexes = collectReplaceableChangedPageIndexes(basePdfDocument, livePdfDocument, pagesWithStudioMarkup);
+        if (changedPageIndexes.length) {
+            return materializeChangedPagesOnBase(embeddedBaseBytes, livePdfBytes, changedPageIndexes);
         }
         const baseFormFields = extractFormFields(basePdfDocument);
         const baseFieldNames = new Set(baseFormFields.map((field) => field.name));
@@ -413,6 +422,57 @@ async function materializeExternalPageAdditionsOnBase(basePdfBytes, livePdfBytes
         basePdfDocument.addPage(page);
     }
     return basePdfDocument.save();
+}
+async function materializeChangedPagesOnBase(basePdfBytes, livePdfBytes, pageIndexes) {
+    const basePdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
+    const livePdfDocument = await pdf_lib_1.PDFDocument.load(livePdfBytes);
+    const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+    for (let index = copiedPages.length - 1; index >= 0; index -= 1) {
+        const pageIndex = pageIndexes[index];
+        basePdfDocument.removePage(pageIndex);
+        basePdfDocument.insertPage(pageIndex, copiedPages[index]);
+    }
+    return basePdfDocument.save();
+}
+function collectReplaceableChangedPageIndexes(basePdfDocument, livePdfDocument, pagesWithStudioMarkup) {
+    const changedPages = [];
+    const pageCount = Math.min(basePdfDocument.getPageCount(), livePdfDocument.getPageCount());
+    for (let index = 0; index < pageCount; index += 1) {
+        if (pagesWithStudioMarkup.has(index + 1)) {
+            continue;
+        }
+        const basePage = basePdfDocument.getPage(index);
+        const livePage = livePdfDocument.getPage(index);
+        if (buildPageSignature(basePage) !== buildPageSignature(livePage)) {
+            changedPages.push(index);
+        }
+    }
+    return changedPages;
+}
+function collectPagesWithStudioMarkup(annotations) {
+    const pages = new Set();
+    for (const stroke of annotations.strokes) {
+        pages.add(stroke.page);
+    }
+    for (const highlight of annotations.highlights) {
+        pages.add(highlight.page);
+    }
+    for (const comment of annotations.comments) {
+        pages.add(comment.page);
+    }
+    return pages;
+}
+function buildPageSignature(page) {
+    const contents = page.node.Contents();
+    const annots = page.node.Annots();
+    const mediaBox = page.node.MediaBox();
+    const rotate = page.node.Rotate();
+    return [
+        contents ? contents.toString() : 'no-contents',
+        annots ? annots.toString() : 'no-annots',
+        mediaBox ? mediaBox.toString() : 'no-mediabox',
+        rotate ? rotate.toString() : 'no-rotate'
+    ].join('|');
 }
 function buildFieldAppearanceOptions(page, widget) {
     return {
@@ -1022,9 +1082,8 @@ function extractActionDescriptor(action) {
             reason: `Unsupported PDF button action: ${subtype}`
         };
     }
-    const directTarget = action.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString);
-    const fileSpecTarget = directTarget ? null : action.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFDict);
-    const url = extractSubmitTargetUrl(directTarget ?? fileSpecTarget ?? undefined);
+    const target = action.get(pdf_lib_1.PDFName.of('F'));
+    const url = extractSubmitTargetUrl(target ?? undefined);
     if (!url) {
         return {
             type: 'unsupported',
@@ -1063,9 +1122,18 @@ function extractSubmitTargetUrl(value) {
     if (value instanceof pdf_lib_1.PDFString || value instanceof pdf_lib_1.PDFHexString) {
         return value.decodeText().trim() || null;
     }
-    const nested = value.lookupMaybe(pdf_lib_1.PDFName.of('F'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString);
-    if (nested instanceof pdf_lib_1.PDFString || nested instanceof pdf_lib_1.PDFHexString) {
-        return nested.decodeText().trim() || null;
+    if (!(value instanceof pdf_lib_1.PDFDict)) {
+        return null;
+    }
+    const unicodeTarget = value.get(pdf_lib_1.PDFName.of('UF'));
+    const decodedUnicodeTarget = extractSubmitTargetUrl(unicodeTarget);
+    if (decodedUnicodeTarget) {
+        return decodedUnicodeTarget;
+    }
+    const nested = value.get(pdf_lib_1.PDFName.of('F'));
+    const decodedNestedTarget = extractSubmitTargetUrl(nested);
+    if (decodedNestedTarget) {
+        return decodedNestedTarget;
     }
     return null;
 }

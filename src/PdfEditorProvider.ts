@@ -77,6 +77,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
   private async postInitialState(uri: vscode.Uri, webview: vscode.Webview): Promise<void> {
     try {
       const pdfBuffer = await this.saveManager.getPdfBytes(uri);
+      const livePdfBuffer = await this.saveManager.getLivePdfBytes(uri);
       const annotations = await this.saveManager.getAnnotations(uri);
       const formFields = await this.saveManager.getFormFields(uri);
 
@@ -85,6 +86,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         payload: {
           fileName: path.basename(uri.fsPath),
           pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
+          outlinePdfBase64: Buffer.from(livePdfBuffer).toString('base64'),
           annotations,
           formFields,
           capabilities: createDefaultCapabilities()

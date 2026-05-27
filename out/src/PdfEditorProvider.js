@@ -86,6 +86,7 @@ class PdfEditorProvider {
     async postInitialState(uri, webview) {
         try {
             const pdfBuffer = await this.saveManager.getPdfBytes(uri);
+            const livePdfBuffer = await this.saveManager.getLivePdfBytes(uri);
             const annotations = await this.saveManager.getAnnotations(uri);
             const formFields = await this.saveManager.getFormFields(uri);
             const message = {
@@ -93,6 +94,7 @@ class PdfEditorProvider {
                 payload: {
                     fileName: path.basename(uri.fsPath),
                     pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
+                    outlinePdfBase64: Buffer.from(livePdfBuffer).toString('base64'),
                     annotations,
                     formFields,
                     capabilities: (0, capabilities_1.createDefaultCapabilities)()

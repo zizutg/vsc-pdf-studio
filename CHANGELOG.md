@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a Bookmark action to the selection mini toolbar for quick Studio bookmark creation
+- Made Studio bookmark add/remove participate in undo/redo and insert new bookmarks in page/position order
+- Surfaced external PDF outline entries as first-class bookmarks in Studio navigation, with clearer labeling and page metadata
 - Added native PDF AcroForm filling for existing text fields, checkboxes, radio groups, dropdowns, and option lists
 - Saved supported form values back through standard PDF form mechanisms for compatibility with other PDF editors and readers
 - Added signer-aware handling for full name, email, and date text fields in supported PDF forms

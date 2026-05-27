@@ -49,6 +49,7 @@ const icons = {
   edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
   ,
   copy: createLucideIcon('<rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />'),
+  bookmark: createLucideIcon('<path d="M6 4h12a1 1 0 0 1 1 1v16l-7-4-7 4V5a1 1 0 0 1 1-1Z" />'),
   sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
   chevronLeft: createLucideIcon('<path d="m15 18-6-6 6-6" />', 'stroke-width="2.25"'),
   chevronRight: createLucideIcon('<path d="m9 18 6-6-6-6" />', 'stroke-width="2.25"'),
@@ -58,6 +59,7 @@ const icons = {
 const state = {
   fileName: 'PDF',
   pdfBase64: '',
+  outlinePdfBase64: '',
   pageEntries: [],
   zoomMode: 'automatic',
   zoom: 1.25,
@@ -93,6 +95,8 @@ const state = {
   sidebarTab: 'outline',
   activeOutlineKey: null,
   collapsedOutline: {},
+  bookmarks: [],
+  externalOutline: [],
   outline: [],
   searchOpen: false,
   searchQuery: '',
@@ -192,7 +196,7 @@ app.innerHTML = `
   <div class="content-shell" id="content-shell">
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-tabs" id="sidebar-tabs">
-        <button type="button" class="sidebar-tab is-active" data-tab="outline" id="outline-tab" hidden>Outline</button>
+        <button type="button" class="sidebar-tab is-active" data-tab="outline" id="outline-tab" hidden>Bookmarks</button>
         <button type="button" class="sidebar-tab" data-tab="pages">Pages</button>
       </div>
       <div class="sidebar-panel" id="outline-panel" hidden>
@@ -257,10 +261,94 @@ const autoSaver = createAutoSaver(() => {
   requestSave();
 });
 
-state.history = [structuredClone(state.sessionAnnotations)];
+state.history = [{ annotations: structuredClone(state.sessionAnnotations), bookmarks: [] }];
 
 function cloneAnnotations(annotations) {
   return structuredClone(annotations);
+}
+
+function cloneBookmarks(bookmarks) {
+  return structuredClone(bookmarks);
+}
+
+function createHistoryEntry(annotations = state.sessionAnnotations, bookmarks = state.bookmarks) {
+  return {
+    annotations: cloneAnnotations(annotations),
+    bookmarks: cloneBookmarks(bookmarks)
+  };
+}
+
+function pushHistoryEntry(entry) {
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  state.history.push(entry);
+  if (state.history.length > MAX_HISTORY_ENTRIES) {
+    const overflow = state.history.length - MAX_HISTORY_ENTRIES;
+    state.history.splice(0, overflow);
+  }
+  state.historyIndex = state.history.length - 1;
+}
+
+function mergeOutlineItems(bookmarks, outlineItems) {
+  const merged = [];
+  let bookmarkIndex = 0;
+  let outlineIndex = 0;
+
+  while (bookmarkIndex < bookmarks.length && outlineIndex < outlineItems.length) {
+    if (compareBookmarks(bookmarks[bookmarkIndex], outlineItems[outlineIndex]) <= 0) {
+      merged.push(bookmarks[bookmarkIndex]);
+      bookmarkIndex += 1;
+    } else {
+      merged.push(outlineItems[outlineIndex]);
+      outlineIndex += 1;
+    }
+  }
+
+  while (bookmarkIndex < bookmarks.length) {
+    merged.push(bookmarks[bookmarkIndex]);
+    bookmarkIndex += 1;
+  }
+
+  while (outlineIndex < outlineItems.length) {
+    merged.push(outlineItems[outlineIndex]);
+    outlineIndex += 1;
+  }
+
+  return merged;
+}
+
+function syncOutlineState() {
+  state.outline = mergeOutlineItems(state.bookmarks, state.externalOutline);
+}
+
+function compareBookmarks(left, right) {
+  if ((left.pageNumber ?? 0) !== (right.pageNumber ?? 0)) {
+    return (left.pageNumber ?? 0) - (right.pageNumber ?? 0);
+  }
+  if ((left.topRatio ?? 0) !== (right.topRatio ?? 0)) {
+    return (left.topRatio ?? 0) - (right.topRatio ?? 0);
+  }
+  return String(left.title || '').localeCompare(String(right.title || ''));
+}
+
+function applyBookmarks(bookmarks, options = {}) {
+  state.bookmarks = cloneBookmarks(bookmarks);
+  syncOutlineState();
+  renderSidebar(options.reveal ? { reveal: true } : {});
+
+  if (!options.skipHistory) {
+    pushHistoryEntry(createHistoryEntry(state.sessionAnnotations, state.bookmarks));
+  }
+
+  updateHistoryState();
+}
+
+function restoreHistoryEntry(entry) {
+  state.bookmarks = cloneBookmarks(entry.bookmarks || []);
+  syncOutlineState();
+  applySessionAnnotations(entry.annotations, {
+    skipHistory: true
+  });
+  renderSidebar();
 }
 
 updateCommentViewsToggleState();
@@ -361,6 +449,7 @@ function renderSidebar(options = {}) {
 
   outlineListEl.replaceChildren();
   outlineTabEl.hidden = state.outline.length === 0;
+  outlineTabEl.textContent = state.outline.length ? `Bookmarks (${countOutlineItems(state.outline)})` : 'Bookmarks';
   if (!state.outline.length && state.sidebarTab === 'outline') {
     state.sidebarTab = 'pages';
   } else if (state.outline.length && state.sidebarTab !== 'outline' && !state.sidebarOpen) {
@@ -385,13 +474,13 @@ function renderSidebar(options = {}) {
       entry.innerHTML = `
         <span class="outline-chevron">${hasChildren ? (isCollapsed ? icons.chevronRight : icons.chevronDown) : ''}</span>
         <span class="sidebar-item-title">${escapeHtml(item.title)}</span>
-        <span class="sidebar-item-meta"></span>
+        <span class="sidebar-item-meta">${item.pageNumber ? `p. ${item.pageNumber}` : 'Label only'}</span>
       `;
 
       if (item.pageNumber) {
         entry.type = 'button';
         entry.addEventListener('click', () => {
-          jumpToPage(item.pageNumber, itemKey);
+          jumpToPage(item.pageNumber, itemKey, item.topRatio ?? null);
         });
       } else {
         entry.classList.add('is-static');
@@ -421,6 +510,17 @@ function renderSidebar(options = {}) {
   appendOutlineItems(state.outline);
   updateSidebarTabUI();
   updateSidebarActiveState(options);
+}
+
+function countOutlineItems(items) {
+  let count = 0;
+  for (const item of items) {
+    count += 1;
+    if (item.items?.length) {
+      count += countOutlineItems(item.items);
+    }
+  }
+  return count;
 }
 
 function updateSidebarActiveState(options = {}) {
@@ -957,11 +1057,12 @@ function renderSelectionAction() {
     <button type="button" class="selection-action-button selection-action-copy" aria-label="Copy selection" title="Copy">${icons.copy}</button>
     <button type="button" class="selection-action-button selection-action-highlight" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
     <button type="button" class="selection-action-button selection-action-comment" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
+    <button type="button" class="selection-action-button selection-action-bookmark" aria-label="Bookmark selection" title="Bookmark">${icons.bookmark}</button>
   `;
   actions.addEventListener('mousedown', (event) => {
     event.preventDefault();
   });
-  const [copyButton, highlightButton, commentButton] = actions.querySelectorAll('.selection-action-button');
+  const [copyButton, highlightButton, commentButton, bookmarkButton] = actions.querySelectorAll('.selection-action-button');
   copyButton.addEventListener('click', async (event) => {
     event.stopPropagation();
     const text = state.selectionSnapshot?.text?.trim();
@@ -992,6 +1093,10 @@ function renderSelectionAction() {
   commentButton.addEventListener('click', (event) => {
     event.stopPropagation();
     addCommentFromSelection();
+  });
+  bookmarkButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    addBookmarkFromSelection();
   });
   workspaceEl.append(actions);
 }
@@ -1106,11 +1211,12 @@ function renderFormFields() {
       } else if (field.type === 'button') {
         control = document.createElement('button');
         control.type = 'button';
-        control.className = 'pdf-form-control pdf-form-button';
+        control.className = 'pdf-form-control pdf-form-button is-studio-overlay';
         control.textContent = field.label;
         const actionState = getButtonActionState(field);
         control.disabled = field.readOnly || state.mode !== 'select' || !actionState.enabled;
         control.dataset.enabled = String(actionState.enabled);
+        control.dataset.actionType = field.action?.type || 'none';
         control.title = actionState.title;
         control.addEventListener('click', (event) => {
           event.preventDefault();
@@ -1375,13 +1481,7 @@ function applySessionAnnotations(annotations, options = {}) {
   renderSelectionAction();
 
   if (!options.skipHistory) {
-    state.history = state.history.slice(0, state.historyIndex + 1);
-    state.history.push(nextAnnotations);
-    if (state.history.length > MAX_HISTORY_ENTRIES) {
-      const overflow = state.history.length - MAX_HISTORY_ENTRIES;
-      state.history.splice(0, overflow);
-    }
-    state.historyIndex = state.history.length - 1;
+    pushHistoryEntry(createHistoryEntry(nextAnnotations, state.bookmarks));
   }
 
   updateHistoryState();
@@ -1425,7 +1525,8 @@ async function rerenderPages() {
     state.pdfBase64,
     pagesEl,
     getZoomConfig(),
-    workspaceSize
+    workspaceSize,
+    state.outlinePdfBase64 || state.pdfBase64
   );
 
   if (requestId !== zoomRenderRequestId) {
@@ -1434,7 +1535,8 @@ async function rerenderPages() {
 
   pagesEl.replaceChildren(fragment);
   state.pageEntries = pages;
-  state.outline = outline;
+  state.externalOutline = outline;
+  syncOutlineState();
   state.zoom = resolvedScale;
   state.renderedZoom = resolvedScale;
   state.totalPages = state.pageEntries.length;
@@ -1648,7 +1750,7 @@ function collapseCommentsForModeChange(nextMode) {
   }
 }
 
-function jumpToPage(pageNumber, outlineKey = null) {
+function jumpToPage(pageNumber, outlineKey = null, topRatio = null) {
   const targetPage = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
   if (!targetPage) {
     return;
@@ -1664,11 +1766,19 @@ function jumpToPage(pageNumber, outlineKey = null) {
   } else {
     updateSidebarActiveState({ reveal: true });
   }
-  targetPage.pageShell.scrollIntoView({
-    behavior: 'auto',
-    block: 'start',
-    inline: 'nearest'
-  });
+  if (typeof topRatio === 'number') {
+    workspaceEl.scrollTo({
+      top: getPageScrollTop(targetPage) + Math.max(0, Math.min(1, topRatio)) * Math.max(targetPage.height - 48, 0),
+      left: workspaceEl.scrollLeft,
+      behavior: 'auto'
+    });
+  } else {
+    targetPage.pageShell.scrollIntoView({
+      behavior: 'auto',
+      block: 'start',
+      inline: 'nearest'
+    });
+  }
 
   window.setTimeout(() => {
     state.pageJumpInProgress = false;
@@ -1874,6 +1984,46 @@ function addCommentFromSelection() {
   renderSelectionAction();
 }
 
+function addBookmarkFromSelection() {
+  if (!state.selectionSnapshot) {
+    return;
+  }
+
+  const snapshot = state.selectionSnapshot;
+  const firstRect = snapshot.rects[0];
+  const rawTitle = (snapshot.text || '').trim().replace(/\s+/g, ' ');
+  const title = rawTitle
+    ? (rawTitle.length > 64 ? `${rawTitle.slice(0, 61)}...` : rawTitle)
+    : `Bookmark p. ${snapshot.page}`;
+
+  const bookmark = {
+    id: `studio-bookmark-${crypto.randomUUID()}`,
+    title,
+    pageNumber: snapshot.page,
+    topRatio: Math.max(0, Math.min(1, (firstRect?.y ?? 0) / Math.max(snapshot.viewportHeight, 1))),
+    depth: 0,
+    actionable: true,
+    isExternal: false,
+    items: []
+  };
+
+  const nextBookmarks = cloneBookmarks(state.bookmarks);
+  const insertAt = nextBookmarks.findIndex((candidate) => compareBookmarks(bookmark, candidate) < 0);
+  if (insertAt === -1) {
+    nextBookmarks.push(bookmark);
+  } else {
+    nextBookmarks.splice(insertAt, 0, bookmark);
+  }
+
+  applyBookmarks(nextBookmarks, { reveal: true });
+  setSidebarTab('outline');
+  setSidebarOpen(true);
+  window.getSelection()?.removeAllRanges();
+  state.selectionSnapshot = null;
+  state.selectionAction = null;
+  renderSelectionAction();
+}
+
 function cancelCommentComposer() {
   state.commentComposer = null;
   renderComments(state.sessionAnnotations.comments);
@@ -1931,9 +2081,7 @@ function undo() {
   }
 
   state.historyIndex -= 1;
-  applySessionAnnotations(state.history[state.historyIndex], {
-    skipHistory: true
-  });
+  restoreHistoryEntry(state.history[state.historyIndex]);
 }
 
 function redo() {
@@ -1942,9 +2090,7 @@ function redo() {
   }
 
   state.historyIndex += 1;
-  applySessionAnnotations(state.history[state.historyIndex], {
-    skipHistory: true
-  });
+  restoreHistoryEntry(state.history[state.historyIndex]);
 }
 
 async function adjustZoom(delta) {
@@ -2371,15 +2517,18 @@ window.addEventListener('message', async (event) => {
   if (message.type === 'init') {
     state.fileName = message.payload.fileName;
     state.pdfBase64 = message.payload.pdfBase64;
+    state.outlinePdfBase64 = message.payload.outlinePdfBase64 || message.payload.pdfBase64;
     state.sessionAnnotations = structuredClone(message.payload.annotations);
     state.formFields = structuredClone(message.payload.formFields);
-    state.history = [structuredClone(state.sessionAnnotations)];
+    state.bookmarks = [];
+    state.externalOutline = [];
+    syncOutlineState();
+    state.history = [createHistoryEntry(state.sessionAnnotations, state.bookmarks)];
     state.historyIndex = 0;
     state.openCommentId = null;
     state.commentComposer = null;
     state.selectionSnapshot = null;
     state.selectionAction = null;
-    state.outline = [];
     state.searchOpen = false;
     state.searchQuery = '';
     state.searchMatches = [];
@@ -2398,6 +2547,9 @@ window.addEventListener('message', async (event) => {
 
     try {
       await rerenderPages();
+      if (state.outline.length) {
+        setSidebarOpen(true);
+      }
       messageBoxEl.hidden = true;
     } catch (error) {
       messageBoxEl.hidden = false;

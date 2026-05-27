@@ -1,4 +1,4 @@
-export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
+export async function renderPdf(base64, container, zoomConfig, workspaceSize, outlineBase64 = base64) {
   const pdfjsLib = globalThis.pdfjsLib;
   const TextLayerBuilder = globalThis.pdfjsViewer?.TextLayerBuilder;
   if (!pdfjsLib?.getDocument || !TextLayerBuilder) {
@@ -11,9 +11,18 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize) {
     disableWorker: true
   });
   const pdf = await loadingTask.promise;
+  let outlinePdf = pdf;
+  if (outlineBase64 && outlineBase64 !== base64) {
+    const outlinePdfData = Uint8Array.from(atob(outlineBase64), (char) => char.charCodeAt(0));
+    const outlineLoadingTask = pdfjsLib.getDocument({
+      data: outlinePdfData,
+      disableWorker: true
+    });
+    outlinePdf = await outlineLoadingTask.promise;
+  }
   const firstPage = await pdf.getPage(1);
   const baseViewport = firstPage.getViewport({ scale: 1 });
-  const outline = await buildOutline(pdf);
+  const outline = await buildOutline(outlinePdf);
   const resolvedScale = resolveScale(zoomConfig, workspaceSize, {
     width: baseViewport.width,
     height: baseViewport.height
@@ -130,6 +139,7 @@ async function buildOutline(pdf) {
   const pageIndexCache = new Map();
   const destinationCache = new Map();
   const pageViewportCache = new Map();
+  let generatedId = 0;
 
   async function getPageViewport(pageNumber) {
     if (!pageViewportCache.has(pageNumber)) {
@@ -236,11 +246,15 @@ async function buildOutline(pdf) {
       const pageNumber = ownPageNumber ?? fallbackPageNumber;
       const topRatio = ownPageNumber ? ownTopRatio : fallbackTopRatio;
 
+      const title = item.title?.trim() || `Bookmark ${results.length + 1}`;
       results.push({
-        title: item.title?.trim() || `Section ${results.length + 1}`,
+        id: `bookmark-${generatedId += 1}`,
+        title,
         pageNumber,
         topRatio,
         depth,
+        isExternal: true,
+        actionable: Boolean(pageNumber),
         items: children
       });
     }

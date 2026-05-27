@@ -63,6 +63,11 @@ export class SaveManager {
     return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
   }
 
+  public async getLivePdfBytes(pdfUri: vscode.Uri): Promise<Uint8Array> {
+    await this.ensureSessionStateFresh(pdfUri);
+    return new Uint8Array(await fs.readFile(pdfUri.fsPath));
+  }
+
   public async getAnnotations(pdfUri: vscode.Uri): Promise<AnnotationDocument> {
     await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
@@ -229,7 +234,7 @@ export class SaveManager {
       pdfDocument,
       formFields,
       embeddedBase,
-      hasRenderableStudioMarkup(sanitizedAnnotations)
+      sanitizedAnnotations
     );
     this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
 
@@ -308,7 +313,7 @@ async function resolveSessionBasePdfBytes(
   livePdfDocument: PDFDocument,
   liveFormFields: PdfFormField[],
   embeddedBase: unknown,
-  hasStudioMarkup: boolean
+  annotations: AnnotationDocument
 ): Promise<Uint8Array> {
   if (!(embeddedBase instanceof PDFRawStream)) {
     return livePdfBytes;
@@ -323,9 +328,19 @@ async function resolveSessionBasePdfBytes(
     const basePdfDocument = await PDFDocument.load(embeddedBaseBytes);
     const livePageCount = livePdfDocument.getPageCount();
     const basePageCount = basePdfDocument.getPageCount();
+    const pagesWithStudioMarkup = collectPagesWithStudioMarkup(annotations);
 
     if (livePageCount > basePageCount) {
       return materializeExternalPageAdditionsOnBase(embeddedBaseBytes, livePdfBytes, basePageCount, livePageCount);
+    }
+
+    const changedPageIndexes = collectReplaceableChangedPageIndexes(
+      basePdfDocument,
+      livePdfDocument,
+      pagesWithStudioMarkup
+    );
+    if (changedPageIndexes.length) {
+      return materializeChangedPagesOnBase(embeddedBaseBytes, livePdfBytes, changedPageIndexes);
     }
 
     const baseFormFields = extractFormFields(basePdfDocument);
@@ -509,6 +524,79 @@ async function materializeExternalPageAdditionsOnBase(
   }
 
   return basePdfDocument.save();
+}
+
+async function materializeChangedPagesOnBase(
+  basePdfBytes: Uint8Array,
+  livePdfBytes: Uint8Array,
+  pageIndexes: number[]
+): Promise<Uint8Array> {
+  const basePdfDocument = await PDFDocument.load(basePdfBytes);
+  const livePdfDocument = await PDFDocument.load(livePdfBytes);
+  const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+
+  for (let index = copiedPages.length - 1; index >= 0; index -= 1) {
+    const pageIndex = pageIndexes[index];
+    basePdfDocument.removePage(pageIndex);
+    basePdfDocument.insertPage(pageIndex, copiedPages[index]);
+  }
+
+  return basePdfDocument.save();
+}
+
+function collectReplaceableChangedPageIndexes(
+  basePdfDocument: PDFDocument,
+  livePdfDocument: PDFDocument,
+  pagesWithStudioMarkup: Set<number>
+): number[] {
+  const changedPages: number[] = [];
+  const pageCount = Math.min(basePdfDocument.getPageCount(), livePdfDocument.getPageCount());
+
+  for (let index = 0; index < pageCount; index += 1) {
+    if (pagesWithStudioMarkup.has(index + 1)) {
+      continue;
+    }
+
+    const basePage = basePdfDocument.getPage(index);
+    const livePage = livePdfDocument.getPage(index);
+    if (buildPageSignature(basePage) !== buildPageSignature(livePage)) {
+      changedPages.push(index);
+    }
+  }
+
+  return changedPages;
+}
+
+function collectPagesWithStudioMarkup(annotations: AnnotationDocument): Set<number> {
+  const pages = new Set<number>();
+
+  for (const stroke of annotations.strokes) {
+    pages.add(stroke.page);
+  }
+
+  for (const highlight of annotations.highlights) {
+    pages.add(highlight.page);
+  }
+
+  for (const comment of annotations.comments) {
+    pages.add(comment.page);
+  }
+
+  return pages;
+}
+
+function buildPageSignature(page: PDFDocument['getPages'] extends () => Array<infer T> ? T : never): string {
+  const contents = page.node.Contents();
+  const annots = page.node.Annots();
+  const mediaBox = page.node.MediaBox();
+  const rotate = page.node.Rotate();
+
+  return [
+    contents ? contents.toString() : 'no-contents',
+    annots ? annots.toString() : 'no-annots',
+    mediaBox ? mediaBox.toString() : 'no-mediabox',
+    rotate ? rotate.toString() : 'no-rotate'
+  ].join('|');
 }
 
 function buildFieldAppearanceOptions(
@@ -1231,9 +1319,8 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
     };
   }
 
-  const directTarget = action.lookupMaybe(PDFName.of('F'), PDFString, PDFHexString);
-  const fileSpecTarget = directTarget ? null : action.lookupMaybe(PDFName.of('F'), PDFDict);
-  const url = extractSubmitTargetUrl(directTarget ?? fileSpecTarget ?? undefined);
+  const target = action.get(PDFName.of('F'));
+  const url = extractSubmitTargetUrl(target ?? undefined);
   if (!url) {
     return {
       type: 'unsupported',
@@ -1269,7 +1356,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
   };
 }
 
-function extractSubmitTargetUrl(value: PDFDict | PDFString | PDFHexString | undefined): string | null {
+function extractSubmitTargetUrl(value: unknown): string | null {
   if (!value) {
     return null;
   }
@@ -1278,9 +1365,20 @@ function extractSubmitTargetUrl(value: PDFDict | PDFString | PDFHexString | unde
     return value.decodeText().trim() || null;
   }
 
-  const nested = value.lookupMaybe(PDFName.of('F'), PDFString, PDFHexString);
-  if (nested instanceof PDFString || nested instanceof PDFHexString) {
-    return nested.decodeText().trim() || null;
+  if (!(value instanceof PDFDict)) {
+    return null;
+  }
+
+  const unicodeTarget = value.get(PDFName.of('UF'));
+  const decodedUnicodeTarget = extractSubmitTargetUrl(unicodeTarget);
+  if (decodedUnicodeTarget) {
+    return decodedUnicodeTarget;
+  }
+
+  const nested = value.get(PDFName.of('F'));
+  const decodedNestedTarget = extractSubmitTargetUrl(nested);
+  if (decodedNestedTarget) {
+    return decodedNestedTarget;
   }
 
   return null;

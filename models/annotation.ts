@@ -22,6 +22,7 @@ export interface AnnotationRect {
 
 export interface AnnotationHighlight {
   id: string;
+  kind?: 'highlight' | 'underline' | 'strikeout';
   color: string;
   page: number;
   viewportWidth: number;

@@ -23,6 +23,8 @@ const icons = {
   highlighter: createLucideIcon(
     '<path d="m9 11-6 6v3h9l6-6" /><path d="m22 12-4-4" /><path d="M8 16l-2-2" />'
   ),
+  underline: createLucideIcon('<path d="M6 4v6a6 6 0 0 0 12 0V4" /><path d="M4 20h16" />'),
+  strikeout: createLucideIcon('<path d="M6 4v2a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v2" /><path d="M4 12h16" />'),
   comment: createLucideIcon(
     '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h8" /><path d="M8 7h6" />'
   ),
@@ -630,13 +632,25 @@ function renderHighlights(highlights) {
 
       for (const rect of highlight.rects) {
         const box = document.createElement('div');
-        box.className = 'highlight-box';
+        box.className = `highlight-box${highlight.kind === 'underline' ? ' underline-box' : highlight.kind === 'strikeout' ? ' strikeout-box' : ''}`;
         box.style.left = `${rect.x * scaleX}px`;
         box.style.top = `${rect.y * scaleY}px`;
         box.style.width = `${rect.width * scaleX}px`;
         box.style.height = `${rect.height * scaleY}px`;
         box.style.backgroundColor = highlight.color;
-        box.style.opacity = '0.28';
+        if (highlight.kind === 'underline') {
+          box.style.opacity = '1';
+          const lineThickness = Math.max(2, Math.min(rect.height * scaleY * 0.16, 4));
+          box.style.height = `${lineThickness}px`;
+          box.style.top = `${rect.y * scaleY + rect.height * scaleY - lineThickness}px`;
+        } else if (highlight.kind === 'strikeout') {
+          box.style.opacity = '1';
+          const lineThickness = Math.max(2, Math.min(rect.height * scaleY * 0.16, 4));
+          box.style.height = `${lineThickness}px`;
+          box.style.top = `${rect.y * scaleY + rect.height * scaleY * 0.5 - lineThickness * 0.5}px`;
+        } else {
+          box.style.opacity = '0.28';
+        }
         pageEntry.highlightLayer.append(box);
       }
     }
@@ -1057,12 +1071,14 @@ function renderSelectionAction() {
     <button type="button" class="selection-action-button selection-action-copy" aria-label="Copy selection" title="Copy">${icons.copy}</button>
     <button type="button" class="selection-action-button selection-action-highlight" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
     <button type="button" class="selection-action-button selection-action-comment" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
+    <button type="button" class="selection-action-button selection-action-underline" aria-label="Underline selection" title="Underline">${icons.underline}</button>
+    <button type="button" class="selection-action-button selection-action-strikeout" aria-label="Strike out selection" title="Strike Out">${icons.strikeout}</button>
     <button type="button" class="selection-action-button selection-action-bookmark" aria-label="Bookmark selection" title="Bookmark">${icons.bookmark}</button>
   `;
   actions.addEventListener('mousedown', (event) => {
     event.preventDefault();
   });
-  const [copyButton, highlightButton, commentButton, bookmarkButton] = actions.querySelectorAll('.selection-action-button');
+  const [copyButton, highlightButton, commentButton, underlineButton, strikeoutButton, bookmarkButton] = actions.querySelectorAll('.selection-action-button');
   copyButton.addEventListener('click', async (event) => {
     event.stopPropagation();
     const text = state.selectionSnapshot?.text?.trim();
@@ -1088,11 +1104,19 @@ function renderSelectionAction() {
   });
   highlightButton.addEventListener('click', (event) => {
     event.stopPropagation();
-    addHighlightFromSelection(true);
+    addHighlightFromSelection(true, 'highlight');
   });
   commentButton.addEventListener('click', (event) => {
     event.stopPropagation();
     addCommentFromSelection();
+  });
+  underlineButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    addHighlightFromSelection(true, 'underline');
+  });
+  strikeoutButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    addHighlightFromSelection(true, 'strikeout');
   });
   bookmarkButton.addEventListener('click', (event) => {
     event.stopPropagation();
@@ -1871,7 +1895,7 @@ function findPageEntryFromNode(node) {
   return state.pageEntries.find((pageEntry) => pageEntry.textLayer === textLayer) ?? null;
 }
 
-function addHighlightFromSelection(force = false) {
+function addHighlightFromSelection(force = false, kind = 'highlight') {
   if (!force && state.mode !== 'highlight') {
     return;
   }
@@ -1885,6 +1909,7 @@ function addHighlightFromSelection(force = false) {
     ...state.sessionAnnotations,
     highlights: state.sessionAnnotations.highlights.concat({
       id: crypto.randomUUID(),
+      kind,
       page: snapshot.page,
       color: state.color,
       viewportWidth: snapshot.viewportWidth,

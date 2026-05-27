@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a Strike Out action to the selection mini toolbar and imported native StrikeOut annotations
+- Added an Underline action to the selection mini toolbar before Bookmark
 - Added a Bookmark action to the selection mini toolbar for quick Studio bookmark creation
 - Made Studio bookmark add/remove participate in undo/redo and insert new bookmarks in page/position order
 - Surfaced external PDF outline entries as first-class bookmarks in Studio navigation, with clearer labeling and page metadata

@@ -91,6 +91,7 @@ function sanitizeHighlight(value: unknown): AnnotationHighlight | null {
 
   return {
     id: sanitizeId(value.id),
+    kind: value.kind === 'underline' ? 'underline' : value.kind === 'strikeout' ? 'strikeout' : 'highlight',
     color: sanitizeColor(value.color),
     page: sanitizePage(value.page),
     viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),

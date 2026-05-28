@@ -76,7 +76,8 @@ function sanitizeHighlight(value) {
         page: sanitizePage(value.page),
         viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
         viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
-        rects
+        rects,
+        attachedNote: sanitizeMarkupNote(value.attachedNote)
     };
 }
 function sanitizeComments(value) {
@@ -111,6 +112,23 @@ function sanitizeComment(value) {
         viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
         rects,
         text
+    };
+}
+function sanitizeMarkupNote(value) {
+    if (!isObject(value)) {
+        return undefined;
+    }
+    const text = typeof value.text === 'string'
+        ? value.text.trim().slice(0, constants_1.PDF_STUDIO_LIMITS.maxCommentLength)
+        : '';
+    if (!text) {
+        return undefined;
+    }
+    return {
+        text,
+        author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
+        modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
+        subject: typeof value.subject === 'string' ? value.subject.trim().slice(0, 120) : undefined
     };
 }
 function sanitizePoints(value, maxLength) {

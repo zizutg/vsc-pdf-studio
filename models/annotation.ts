@@ -20,6 +20,13 @@ export interface AnnotationRect {
   height: number;
 }
 
+export interface AnnotationMarkupNote {
+  text: string;
+  author?: string;
+  modifiedAt?: string;
+  subject?: string;
+}
+
 export interface AnnotationHighlight {
   id: string;
   kind?: 'highlight' | 'underline' | 'strikeout';
@@ -28,6 +35,7 @@ export interface AnnotationHighlight {
   viewportWidth: number;
   viewportHeight: number;
   rects: AnnotationRect[];
+  attachedNote?: AnnotationMarkupNote;
 }
 
 export interface AnnotationComment {

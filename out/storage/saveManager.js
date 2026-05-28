@@ -97,12 +97,17 @@ class SaveManager {
     async saveDocument(pdfUri, annotations, formFields) {
         const cacheKey = pdfUri.toString();
         let basePdfBytes = this.sessionBasePdf.get(cacheKey);
+        const previousAnnotations = this.sessionAnnotations.get(cacheKey) ?? (0, annotation_1.emptyAnnotationDocument)();
         if (!basePdfBytes) {
             basePdfBytes = await this.getPdfBytes(pdfUri);
         }
         const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
         applyFormFieldValues(pdfDocument, formFields);
         const pages = pdfDocument.getPages();
+        removeNativeMarkupAnnotations(pdfDocument, new Set([
+            ...previousAnnotations.highlights.map((highlight) => highlight.id),
+            ...annotations.highlights.map((highlight) => highlight.id)
+        ]));
         for (const stroke of annotations.strokes) {
             const page = pages[stroke.page - 1];
             if (!page || stroke.points.length < 2) {
@@ -125,6 +130,11 @@ class SaveManager {
         for (const highlight of annotations.highlights) {
             const page = pages[highlight.page - 1];
             if (!page || !highlight.rects.length) {
+                continue;
+            }
+            if (highlight.attachedNote?.text.trim()) {
+                removeNativeMarkupAnnotation(page, highlight.id, highlight.kind);
+                addNativeMarkupAnnotation(pdfDocument, page, highlight);
                 continue;
             }
             const scaleX = page.getWidth() / Math.max(highlight.viewportWidth, 1);
@@ -854,6 +864,98 @@ function addNativeCommentAnnotation(pdfDocument, page, comment) {
     const annotationRef = pdfDocument.context.register(annotation);
     page.node.addAnnot(annotationRef);
 }
+function addNativeMarkupAnnotation(pdfDocument, page, highlight) {
+    const attachedNote = highlight.attachedNote;
+    if (!attachedNote?.text.trim() || !highlight.rects.length) {
+        return;
+    }
+    const scaleX = page.getWidth() / Math.max(highlight.viewportWidth, 1);
+    const scaleY = page.getHeight() / Math.max(highlight.viewportHeight, 1);
+    const color = toRgb(highlight.color);
+    const quadPoints = [];
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const rect of highlight.rects) {
+        const left = rect.x * scaleX;
+        const right = (rect.x + rect.width) * scaleX;
+        const top = page.getHeight() - rect.y * scaleY;
+        const bottom = page.getHeight() - (rect.y + rect.height) * scaleY;
+        quadPoints.push(left, top, right, top, left, bottom, right, bottom);
+        minX = Math.min(minX, left);
+        minY = Math.min(minY, bottom);
+        maxX = Math.max(maxX, right);
+        maxY = Math.max(maxY, top);
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        return;
+    }
+    const subtype = highlight.kind === 'underline' ? 'Underline' : highlight.kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+    const annotation = pdfDocument.context.obj({
+        Type: pdf_lib_1.PDFName.of('Annot'),
+        Subtype: pdf_lib_1.PDFName.of(subtype),
+        Rect: pdfDocument.context.obj([minX, minY, maxX, maxY]),
+        QuadPoints: pdfDocument.context.obj(quadPoints),
+        Contents: pdf_lib_1.PDFHexString.fromText(attachedNote.text.trim()),
+        NM: pdf_lib_1.PDFHexString.fromText(highlight.id),
+        T: pdf_lib_1.PDFHexString.fromText((attachedNote.author || 'PDF Studio').trim()),
+        M: pdf_lib_1.PDFString.of(toPdfDate(attachedNote.modifiedAt ? new Date(attachedNote.modifiedAt) : new Date())),
+        C: pdfDocument.context.obj([color.red, color.green, color.blue]),
+        F: 4
+    });
+    if (attachedNote.subject?.trim()) {
+        annotation.set(pdf_lib_1.PDFName.of('Subj'), pdf_lib_1.PDFHexString.fromText(attachedNote.subject.trim()));
+    }
+    const annotationRef = pdfDocument.context.register(annotation);
+    page.node.addAnnot(annotationRef);
+}
+function removeNativeMarkupAnnotation(page, annotationId, kind) {
+    const annots = page.node.Annots();
+    if (!annots) {
+        return;
+    }
+    const targetSubtype = kind === 'underline' ? 'Underline' : kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+    for (let index = annots.size() - 1; index >= 0; index -= 1) {
+        const annotation = annots.lookupMaybe(index, pdf_lib_1.PDFDict);
+        if (!annotation) {
+            continue;
+        }
+        const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
+        if (subtype !== targetSubtype) {
+            continue;
+        }
+        const nm = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+        if (nm === annotationId) {
+            annots.remove(index);
+        }
+    }
+}
+function removeNativeMarkupAnnotations(pdfDocument, annotationIds) {
+    if (!annotationIds.size) {
+        return;
+    }
+    for (const page of pdfDocument.getPages()) {
+        const annots = page.node.Annots();
+        if (!annots) {
+            continue;
+        }
+        for (let index = annots.size() - 1; index >= 0; index -= 1) {
+            const annotation = annots.lookupMaybe(index, pdf_lib_1.PDFDict);
+            if (!annotation) {
+                continue;
+            }
+            const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
+            if (subtype !== 'Highlight' && subtype !== 'Underline' && subtype !== 'StrikeOut') {
+                continue;
+            }
+            const nm = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            if (nm && annotationIds.has(nm)) {
+                annots.remove(index);
+            }
+        }
+    }
+}
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
@@ -963,6 +1065,10 @@ function extractNativeHighlights(pdfDocument) {
             const nm = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
             const colorArray = annotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray);
             const color = colorArray ? colorArrayToHex(colorArray) : '#facc15';
+            const noteText = decodeNativeCommentText(annotation).trim();
+            const noteAuthor = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('T'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString)).trim();
+            const noteModifiedAt = decodePdfDate(annotation.lookupMaybe(pdf_lib_1.PDFName.of('M'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            const noteSubject = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subj'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString)).trim();
             const highlightId = nm ||
                 `native-highlight-${pageIndex + 1}-${Math.round(rects[0].x)}-${Math.round(rects[0].y)}-${rects.length}`;
             if (seenHighlightKeys.has(highlightId)) {
@@ -976,7 +1082,15 @@ function extractNativeHighlights(pdfDocument) {
                 page: pageIndex + 1,
                 viewportWidth: pageWidth,
                 viewportHeight: pageHeight,
-                rects
+                rects,
+                attachedNote: noteText
+                    ? {
+                        text: noteText,
+                        author: noteAuthor || undefined,
+                        modifiedAt: noteModifiedAt || undefined,
+                        subject: noteSubject || undefined
+                    }
+                    : undefined
             });
         }
     });

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added view, edit, and delete support for note-bearing highlights, underlines, and strikeouts imported from other PDF editors
+- Adjusted the shared color button so it matches the sizing and responsive behavior of the other toolbar buttons
+
 ## 0.0.4
 
 - Added PDF form filling for existing native fields, including text, checkbox, radio, dropdown, option list, and supported button actions

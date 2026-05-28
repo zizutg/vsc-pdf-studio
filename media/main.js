@@ -87,6 +87,7 @@ const state = {
   history: [],
   historyIndex: 0,
   openCommentId: null,
+  openMarkupNoteId: null,
   showAllComments: false,
   commentComposer: null,
   selectionSnapshot: null,
@@ -674,6 +675,24 @@ function renderHighlights(highlights) {
         } else {
           box.style.opacity = '0.28';
         }
+        if (highlight.attachedNote?.text) {
+          box.style.cursor = 'pointer';
+          box.title = 'Open attached note';
+          box.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (state.commentComposer) {
+              submitCommentComposer();
+              if (state.commentComposer) {
+                cancelCommentComposer();
+              }
+            }
+            state.showAllComments = false;
+            state.openCommentId = null;
+            state.openMarkupNoteId = state.openMarkupNoteId === highlight.id ? null : highlight.id;
+            updateCommentViewsToggleState();
+            renderComments(state.sessionAnnotations.comments);
+          });
+        }
         pageEntry.highlightLayer.append(box);
       }
     }
@@ -987,6 +1006,7 @@ function renderComments(comments) {
           updateCommentViewsToggleState();
           state.commentComposer = {
             id: comment.id,
+            sourceHighlightId: null,
             author: comment.author || state.commentAuthor,
             modifiedAt: comment.modifiedAt,
             page: comment.page,
@@ -1049,7 +1069,7 @@ function renderComments(comments) {
           <div class="comment-actions">
             <button type="button" class="comment-save" aria-label="Save comment" title="Save">${icons.floppy}</button>
             <button type="button" class="comment-cancel" aria-label="Close" title="Close">${icons.close}</button>
-            ${state.commentComposer.id ? `<button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>` : ''}
+            ${state.commentComposer.id || state.commentComposer.sourceHighlightId ? `<button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>` : ''}
           </div>
         </div>
       `;
@@ -1087,6 +1107,119 @@ function renderComments(comments) {
         input.setSelectionRange(input.value.length, input.value.length);
       }, 0);
     }
+
+    renderAttachedMarkupNotes(pageEntry);
+  }
+}
+
+function renderAttachedMarkupNotes(pageEntry) {
+  for (const highlight of state.sessionAnnotations.highlights) {
+    if (highlight.page !== pageEntry.pageNumber || !highlight.rects.length || !highlight.attachedNote?.text) {
+      continue;
+    }
+
+    const firstRect = highlight.rects[0];
+    const anchor = highlight.rects[highlight.rects.length - 1];
+    const scaleX = pageEntry.width / Math.max(highlight.viewportWidth || pageEntry.width, 1);
+    const scaleY = pageEntry.height / Math.max(highlight.viewportHeight || pageEntry.height, 1);
+    const markerSize = 10;
+    const markerLeft = Math.min(
+      pageEntry.width - markerSize - 2,
+      Math.max(2, (anchor.x + anchor.width) * scaleX + 1)
+    );
+    const markerTop = Math.min(
+      pageEntry.height - markerSize - 2,
+      Math.max(2, anchor.y * scaleY - markerSize * 0.7)
+    );
+    const anchorRight = (anchor.x + anchor.width) * scaleX;
+    const anchorTop = firstRect.y * scaleY;
+
+    const marker = document.createElement('button');
+    marker.type = 'button';
+    marker.className = 'comment-marker markup-note-marker';
+    marker.style.left = `${markerLeft}px`;
+    marker.style.top = `${markerTop}px`;
+    marker.style.backgroundColor = highlight.color;
+    marker.innerHTML = icons.comment;
+    marker.title = 'Open attached note';
+    marker.addEventListener('click', (event) => {
+      event.stopPropagation();
+      state.showAllComments = false;
+      state.openCommentId = null;
+      state.openMarkupNoteId = state.openMarkupNoteId === highlight.id ? null : highlight.id;
+      updateCommentViewsToggleState();
+      renderComments(state.sessionAnnotations.comments);
+    });
+    pageEntry.commentLayer.append(marker);
+
+    if (state.openMarkupNoteId !== highlight.id) {
+      continue;
+    }
+
+    const popupWidth = 260;
+    const popupHeight = 72;
+    const popupGap = 10;
+    const placement = getCommentOverlayPlacement({
+      pageEntry,
+      overlayWidth: popupWidth,
+      overlayHeight: popupHeight,
+      gap: popupGap,
+      anchorRight,
+      anchorTop,
+      markerAnchorX: markerLeft + markerSize
+    });
+    const connector = document.createElement('div');
+    connector.className = 'comment-connector';
+    connector.style.left = `${placement.connectorLeft}px`;
+    connector.style.top = `${markerTop + markerSize / 2}px`;
+    connector.style.width = `${placement.connectorWidth}px`;
+    connector.style.setProperty('--comment-accent', highlight.color);
+    pageEntry.commentLayer.append(connector);
+
+    const popup = document.createElement('div');
+    popup.className = 'comment-popup';
+    popup.style.left = `${placement.left}px`;
+    popup.style.top = `${placement.top}px`;
+    popup.style.borderColor = highlight.color;
+    popup.style.setProperty('--comment-accent', highlight.color);
+    popup.innerHTML = `
+      <div class="comment-popup-author"></div>
+      <div class="comment-popup-text"></div>
+      <div class="comment-popup-actions">
+        <button type="button" class="comment-edit" aria-label="Edit attached note" title="Edit">${icons.edit}</button>
+        <button type="button" class="comment-delete" aria-label="Delete attached note" title="Delete">${icons.trash}</button>
+      </div>
+    `;
+    const authorLabel = highlight.attachedNote.author || state.commentAuthor;
+    const dateLabel = formatCommentDate(highlight.attachedNote.modifiedAt);
+    popup.querySelector('.comment-popup-author').textContent = dateLabel ? `${authorLabel}: ${dateLabel}` : authorLabel;
+    popup.querySelector('.comment-popup-text').textContent = highlight.attachedNote.text;
+    popup.querySelector('.comment-edit').addEventListener('click', () => {
+      state.openMarkupNoteId = null;
+      state.showAllComments = false;
+      updateCommentViewsToggleState();
+      state.commentComposer = {
+        id: null,
+        sourceHighlightId: highlight.id,
+        author: highlight.attachedNote.author || state.commentAuthor,
+        modifiedAt: highlight.attachedNote.modifiedAt,
+        page: highlight.page,
+        viewportWidth: highlight.viewportWidth,
+        viewportHeight: highlight.viewportHeight,
+        rects: structuredClone(highlight.rects),
+        color: highlight.color,
+        text: highlight.attachedNote.text
+      };
+      renderComments(state.sessionAnnotations.comments);
+    });
+    popup.querySelector('.comment-delete').addEventListener('click', () => {
+      state.openMarkupNoteId = null;
+      applySessionAnnotations({
+        ...state.sessionAnnotations,
+        highlights: state.sessionAnnotations.highlights.filter((candidate) => candidate.id !== highlight.id)
+      });
+    });
+    pageEntry.commentLayer.append(popup);
   }
 }
 
@@ -1787,8 +1920,9 @@ function collapseCommentsForModeChange(nextMode) {
     return;
   }
 
-  const hadExpandedComments = state.openCommentId !== null || state.showAllComments;
+  const hadExpandedComments = state.openCommentId !== null || state.openMarkupNoteId !== null || state.showAllComments;
   state.openCommentId = null;
+  state.openMarkupNoteId = null;
   state.showAllComments = false;
   updateCommentViewsToggleState();
 
@@ -2029,6 +2163,7 @@ function addCommentFromSelection() {
 
   state.commentComposer = {
     id: null,
+    sourceHighlightId: null,
     author: state.commentAuthor,
     modifiedAt: new Date().toISOString(),
     page: state.selectionSnapshot.page,
@@ -2089,6 +2224,17 @@ function cancelCommentComposer() {
 }
 
 function deleteCommentFromComposer() {
+  if (state.commentComposer?.sourceHighlightId) {
+    const sourceHighlightId = state.commentComposer.sourceHighlightId;
+    state.commentComposer = null;
+    state.openMarkupNoteId = null;
+    applySessionAnnotations({
+      ...state.sessionAnnotations,
+      highlights: state.sessionAnnotations.highlights.filter((highlight) => highlight.id !== sourceHighlightId)
+    });
+    return;
+  }
+
   if (!state.commentComposer?.id) {
     cancelCommentComposer();
     return;
@@ -2108,16 +2254,47 @@ function submitCommentComposer() {
     return;
   }
 
+  if (state.commentComposer.sourceHighlightId) {
+    const composerState = state.commentComposer;
+    const sourceHighlightId = composerState.sourceHighlightId;
+    const nextModifiedAt = new Date().toISOString();
+    state.openMarkupNoteId = sourceHighlightId;
+    state.commentComposer = null;
+    applySessionAnnotations({
+      ...state.sessionAnnotations,
+      highlights: state.sessionAnnotations.highlights.map((highlight) =>
+        highlight.id === sourceHighlightId
+          ? {
+              ...highlight,
+              attachedNote: {
+                ...(highlight.attachedNote || {}),
+                text: composerState.text.trim(),
+                author: composerState.author || state.commentAuthor,
+                modifiedAt: nextModifiedAt,
+                subject: highlight.attachedNote?.subject
+              }
+            }
+          : highlight
+      )
+    });
+    window.getSelection()?.removeAllRanges();
+    state.selectionSnapshot = null;
+    state.selectionAction = null;
+    renderSelectionAction();
+    return;
+  }
+
+  const composerState = state.commentComposer;
   const nextComment = {
-    id: state.commentComposer.id ?? crypto.randomUUID(),
-    author: state.commentComposer.author || state.commentAuthor,
+    id: composerState.id ?? crypto.randomUUID(),
+    author: composerState.author || state.commentAuthor,
     modifiedAt: new Date().toISOString(),
-    page: state.commentComposer.page,
-    viewportWidth: state.commentComposer.viewportWidth,
-    viewportHeight: state.commentComposer.viewportHeight,
-    rects: structuredClone(state.commentComposer.rects),
-    color: state.commentComposer.color,
-    text: state.commentComposer.text.trim()
+    page: composerState.page,
+    viewportWidth: composerState.viewportWidth,
+    viewportHeight: composerState.viewportHeight,
+    rects: structuredClone(composerState.rects),
+    color: composerState.color,
+    text: composerState.text.trim()
   };
 
   state.openCommentId = nextComment.id;
@@ -2461,6 +2638,7 @@ commentViewsToggleEl.addEventListener('click', () => {
   state.showAllComments = !state.showAllComments;
   if (state.showAllComments) {
     state.openCommentId = null;
+    state.openMarkupNoteId = null;
   }
   updateCommentViewsToggleState();
   renderComments(state.sessionAnnotations.comments);
@@ -2500,6 +2678,7 @@ window.addEventListener('click', (event) => {
   if (!event.target.closest('.comment-marker, .comment-popup, .comment-composer')) {
     if (!state.showAllComments) {
       state.openCommentId = null;
+      state.openMarkupNoteId = null;
       renderComments(state.sessionAnnotations.comments);
     }
   }
@@ -2592,6 +2771,7 @@ window.addEventListener('message', async (event) => {
     state.history = [createHistoryEntry(state.sessionAnnotations, state.bookmarks)];
     state.historyIndex = 0;
     state.openCommentId = null;
+    state.openMarkupNoteId = null;
     state.commentComposer = null;
     state.selectionSnapshot = null;
     state.selectionAction = null;

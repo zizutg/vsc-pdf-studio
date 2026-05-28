@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import * as os from 'node:os';
 import * as vscode from 'vscode';
 import type { AnnotationDocument } from '../models/annotation';
 import type { PdfButtonAction, PdfFormField } from '../models/formField';
@@ -80,6 +81,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
       const livePdfBuffer = await this.saveManager.getLivePdfBytes(uri);
       const annotations = await this.saveManager.getAnnotations(uri);
       const formFields = await this.saveManager.getFormFields(uri);
+      const commentAuthor = this.resolveCommentAuthor();
 
       const message: ExtensionToWebviewMessage = {
         type: 'init',
@@ -87,6 +89,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
           fileName: path.basename(uri.fsPath),
           pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
           outlinePdfBase64: Buffer.from(livePdfBuffer).toString('base64'),
+          commentAuthor,
           annotations,
           formFields,
           capabilities: createDefaultCapabilities()
@@ -189,6 +192,24 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     };
 
     await webview.postMessage(message);
+  }
+
+  private resolveCommentAuthor(): string {
+    const configured = vscode.workspace.getConfiguration('pdfStudio').get<string>('commentAuthor')?.trim();
+    if (configured) {
+      return configured;
+    }
+
+    try {
+      const osUser = os.userInfo().username?.trim();
+      if (osUser) {
+        return osUser;
+      }
+    } catch {
+      // Fall through to the extension default below.
+    }
+
+    return 'PDF Studio';
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PdfEditorProvider = void 0;
 const path = __importStar(require("node:path"));
+const os = __importStar(require("node:os"));
 const vscode = __importStar(require("vscode"));
 const constants_1 = require("./constants");
 const capabilities_1 = require("./features/capabilities");
@@ -89,12 +90,14 @@ class PdfEditorProvider {
             const livePdfBuffer = await this.saveManager.getLivePdfBytes(uri);
             const annotations = await this.saveManager.getAnnotations(uri);
             const formFields = await this.saveManager.getFormFields(uri);
+            const commentAuthor = this.resolveCommentAuthor();
             const message = {
                 type: 'init',
                 payload: {
                     fileName: path.basename(uri.fsPath),
                     pdfBase64: Buffer.from(pdfBuffer).toString('base64'),
                     outlinePdfBase64: Buffer.from(livePdfBuffer).toString('base64'),
+                    commentAuthor,
                     annotations,
                     formFields,
                     capabilities: (0, capabilities_1.createDefaultCapabilities)()
@@ -178,6 +181,22 @@ class PdfEditorProvider {
             }
         };
         await webview.postMessage(message);
+    }
+    resolveCommentAuthor() {
+        const configured = vscode.workspace.getConfiguration('pdfStudio').get('commentAuthor')?.trim();
+        if (configured) {
+            return configured;
+        }
+        try {
+            const osUser = os.userInfo().username?.trim();
+            if (osUser) {
+                return osUser;
+            }
+        }
+        catch {
+            // Fall through to the extension default below.
+        }
+        return 'PDF Studio';
     }
     getHtmlForWebview(webview) {
         const nonce = getNonce();

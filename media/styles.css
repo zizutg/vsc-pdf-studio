@@ -162,6 +162,12 @@ body {
   padding: 0;
 }
 
+#color-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
 #menu-button {
   width: 34px;
   height: 34px;
@@ -401,12 +407,12 @@ body {
 }
 
 .toolbar-color-chip {
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: var(--active-color, #ef4444);
-  box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.45);
+  box-shadow: inset 0 0 0 1.5px rgba(15, 23, 42, 0.45);
 }
 
 .comment-popover-controls #comment-views-toggle {
@@ -785,6 +791,7 @@ body {
   .zoom-controls button,
   #undo-button,
   #comment-button,
+  #color-button,
   #comment-views-toggle,
   .redo-button,
   #redo-button,
@@ -840,6 +847,7 @@ body {
   .zoom-controls button,
   #undo-button,
   #comment-button,
+  #color-button,
   #comment-views-toggle,
   .redo-button,
   #redo-button,
@@ -895,6 +903,7 @@ body {
   .zoom-controls button,
   #undo-button,
   #comment-button,
+  #color-button,
   #comment-views-toggle,
   .redo-button,
   #redo-button,
@@ -950,6 +959,7 @@ body {
   .zoom-controls button,
   #undo-button,
   #comment-button,
+  #color-button,
   #comment-views-toggle,
   .redo-button,
   #redo-button,
@@ -1098,6 +1108,15 @@ body {
   opacity: 0.96;
 }
 
+.comment-popup-author {
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--comment-accent, #475569) 28%, transparent);
+}
+
 .comment-popup-text {
   white-space: pre-wrap;
 }
@@ -1165,6 +1184,13 @@ body {
 
 .comment-editor-wrap {
   position: relative;
+}
+
+.comment-author-line {
+  margin: 2px 4px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .comment-input {

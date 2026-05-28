@@ -32,6 +32,8 @@ export interface AnnotationHighlight {
 
 export interface AnnotationComment {
   id: string;
+  author?: string;
+  modifiedAt?: string;
   color: string;
   page: number;
   viewportWidth: number;

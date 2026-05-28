@@ -60,6 +60,7 @@ const icons = {
 
 const state = {
   fileName: 'PDF',
+  commentAuthor: 'PDF Studio',
   pdfBase64: '',
   outlinePdfBase64: '',
   pageEntries: [],
@@ -106,6 +107,23 @@ const state = {
   activeSearchMatchIndex: -1,
   colorPopoverOwner: null
 };
+
+function formatCommentDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  }).format(date);
+}
 
 app.innerHTML = `
   <div class="toolbar">
@@ -952,12 +970,16 @@ function renderComments(comments) {
         popup.style.borderColor = comment.color;
         popup.style.setProperty('--comment-accent', comment.color);
         popup.innerHTML = `
+          <div class="comment-popup-author"></div>
           <div class="comment-popup-text"></div>
           <div class="comment-popup-actions">
             <button type="button" class="comment-edit" aria-label="Edit comment" title="Edit">${icons.edit}</button>
             <button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>
           </div>
         `;
+        const authorLabel = comment.author || state.commentAuthor;
+        const dateLabel = formatCommentDate(comment.modifiedAt);
+        popup.querySelector('.comment-popup-author').textContent = dateLabel ? `${authorLabel}: ${dateLabel}` : authorLabel;
         popup.querySelector('.comment-popup-text').textContent = comment.text;
         popup.querySelector('.comment-edit').addEventListener('click', () => {
           state.openCommentId = null;
@@ -965,6 +987,8 @@ function renderComments(comments) {
           updateCommentViewsToggleState();
           state.commentComposer = {
             id: comment.id,
+            author: comment.author || state.commentAuthor,
+            modifiedAt: comment.modifiedAt,
             page: comment.page,
             viewportWidth: comment.viewportWidth,
             viewportHeight: comment.viewportHeight,
@@ -1020,6 +1044,7 @@ function renderComments(comments) {
       composer.style.setProperty('--comment-accent', state.commentComposer.color);
       composer.innerHTML = `
         <div class="comment-editor-wrap">
+          <div class="comment-author-line"></div>
           <textarea class="comment-input" placeholder="Add a comment..."></textarea>
           <div class="comment-actions">
             <button type="button" class="comment-save" aria-label="Save comment" title="Save">${icons.floppy}</button>
@@ -1030,9 +1055,13 @@ function renderComments(comments) {
       `;
 
       const input = composer.querySelector('.comment-input');
+      const authorLine = composer.querySelector('.comment-author-line');
       const saveButton = composer.querySelector('.comment-save');
       const cancelButton = composer.querySelector('.comment-cancel');
       const deleteButton = composer.querySelector('.comment-delete');
+      const composerAuthorLabel = state.commentComposer.author || state.commentAuthor;
+      const composerDateLabel = formatCommentDate(state.commentComposer.modifiedAt);
+      authorLine.textContent = composerDateLabel ? `${composerAuthorLabel}: ${composerDateLabel}` : composerAuthorLabel;
       input.value = state.commentComposer.text;
       input.addEventListener('input', () => {
         state.commentComposer.text = input.value;
@@ -2000,6 +2029,8 @@ function addCommentFromSelection() {
 
   state.commentComposer = {
     id: null,
+    author: state.commentAuthor,
+    modifiedAt: new Date().toISOString(),
     page: state.selectionSnapshot.page,
     viewportWidth: state.selectionSnapshot.viewportWidth,
     viewportHeight: state.selectionSnapshot.viewportHeight,
@@ -2079,6 +2110,8 @@ function submitCommentComposer() {
 
   const nextComment = {
     id: state.commentComposer.id ?? crypto.randomUUID(),
+    author: state.commentComposer.author || state.commentAuthor,
+    modifiedAt: new Date().toISOString(),
     page: state.commentComposer.page,
     viewportWidth: state.commentComposer.viewportWidth,
     viewportHeight: state.commentComposer.viewportHeight,
@@ -2548,6 +2581,7 @@ window.addEventListener('message', async (event) => {
 
   if (message.type === 'init') {
     state.fileName = message.payload.fileName;
+    state.commentAuthor = message.payload.commentAuthor || 'PDF Studio';
     state.pdfBase64 = message.payload.pdfBase64;
     state.outlinePdfBase64 = message.payload.outlinePdfBase64 || message.payload.pdfBase64;
     state.sessionAnnotations = structuredClone(message.payload.annotations);

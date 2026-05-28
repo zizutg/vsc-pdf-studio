@@ -836,14 +836,16 @@ function addNativeCommentAnnotation(pdfDocument, page, comment) {
         Contents: pdf_lib_1.PDFHexString.fromText(comment.text.trim()),
         Name: pdf_lib_1.PDFName.of('Comment'),
         NM: pdf_lib_1.PDFHexString.fromText(comment.id),
-        T: pdf_lib_1.PDFHexString.fromText('PDF Studio'),
-        M: pdf_lib_1.PDFString.of(toPdfDate(new Date())),
+        T: pdf_lib_1.PDFHexString.fromText((comment.author || 'PDF Studio').trim()),
+        M: pdf_lib_1.PDFString.of(toPdfDate(comment.modifiedAt ? new Date(comment.modifiedAt) : new Date())),
         C: pdfDocument.context.obj([color.red, color.green, color.blue]),
         Open: false,
         F: 4
     });
     annotation.set(PDF_STUDIO_COMMENT_KEY, pdf_lib_1.PDFHexString.fromText(JSON.stringify({
         id: comment.id,
+        author: comment.author,
+        modifiedAt: comment.modifiedAt,
         color: comment.color,
         viewportWidth: comment.viewportWidth,
         viewportHeight: comment.viewportHeight,
@@ -896,6 +898,8 @@ function extractNativeComments(pdfDocument) {
                 continue;
             }
             const nm = decodePdfText(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
+            const author = decodePdfText(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('T'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString)).trim();
+            const modifiedAt = decodePdfDate(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('M'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
             const colorArray = sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray) ?? annotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray);
             const color = colorArray ? colorArrayToHex(colorArray) : '#f97316';
             const pageWidth = page.getWidth();
@@ -910,6 +914,8 @@ function extractNativeComments(pdfDocument) {
             seenCommentKeys.add(commentId);
             comments.push({
                 id: commentId,
+                author: studioData?.author || author || undefined,
+                modifiedAt: studioData?.modifiedAt || modifiedAt || undefined,
                 color: studioData?.color || color,
                 page: pageIndex + 1,
                 viewportWidth: studioData?.viewportWidth || pageWidth,
@@ -1420,6 +1426,18 @@ function decodeNativeCommentText(annotation) {
     // Adobe often stores comment text in simple rich-text markup.
     return richText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
+function decodePdfDate(value) {
+    const raw = decodePdfText(value).trim();
+    if (!raw) {
+        return null;
+    }
+    const match = raw.match(/^D:(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+    if (!match) {
+        return null;
+    }
+    const [, year, month, day, hour, minute, second] = match;
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))).toISOString();
+}
 function decodeStudioCommentPayload(value) {
     if (!value) {
         return null;
@@ -1435,6 +1453,8 @@ function decodeStudioCommentPayload(value) {
         }
         return {
             id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : crypto.randomUUID(),
+            author: typeof parsed.author === 'string' && parsed.author.trim() ? parsed.author.trim().slice(0, 120) : undefined,
+            modifiedAt: typeof parsed.modifiedAt === 'string' && parsed.modifiedAt.trim() ? parsed.modifiedAt.trim() : undefined,
             color: typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color) ? parsed.color : '#f97316',
             viewportWidth: typeof parsed.viewportWidth === 'number' && Number.isFinite(parsed.viewportWidth) && parsed.viewportWidth > 0
                 ? parsed.viewportWidth

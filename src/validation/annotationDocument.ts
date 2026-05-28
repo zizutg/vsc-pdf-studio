@@ -130,6 +130,8 @@ function sanitizeComment(value: unknown): AnnotationComment | null {
 
   return {
     id: sanitizeId(value.id),
+    author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
+    modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
     color: sanitizeColor(value.color),
     page: sanitizePage(value.page),
     viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),

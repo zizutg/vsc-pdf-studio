@@ -9,6 +9,7 @@ export type ExtensionToWebviewMessage =
         fileName: string;
         pdfBase64: string;
         outlinePdfBase64: string;
+        commentAuthor: string;
         annotations: AnnotationDocument;
         formFields: PdfFormField[];
         capabilities: CapabilitySnapshot;

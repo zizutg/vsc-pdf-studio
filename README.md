@@ -21,6 +21,12 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 - Annotations are embedded back into the PDF for compatibility with other PDF readers
 - Extension-managed annotation data is also embedded in the PDF so Studio can restore editable state on reopen
 
+## Comment Author
+
+To set the name used for PDF Studio comments, open the Command Palette and run:
+
+`PDF Studio: Set Comment Author`
+
 ## Current Limitations
 
 - The editor is optimized for review and markup workflows, not full PDF text editing

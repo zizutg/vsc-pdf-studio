@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.5
 
 - Added view, edit, and delete support for note-bearing highlights, underlines, and strikeouts imported from other PDF editors
 - Adjusted the shared color button so it matches the sizing and responsive behavior of the other toolbar buttons

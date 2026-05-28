@@ -11,6 +11,7 @@ import { SaveManager } from '../storage/saveManager';
 
 export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
   public static readonly viewType = PDF_STUDIO_VIEW_TYPE;
+  private readonly webviewsByDocument = new Map<string, Set<vscode.Webview>>();
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -34,6 +35,11 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     document: vscode.CustomDocument,
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
+    const documentKey = document.uri.toString();
+    const webviews = this.webviewsByDocument.get(documentKey) ?? new Set<vscode.Webview>();
+    webviews.add(webviewPanel.webview);
+    this.webviewsByDocument.set(documentKey, webviews);
+
     webviewPanel.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri]
@@ -73,6 +79,37 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         }
       }
     });
+
+    webviewPanel.onDidDispose(() => {
+      const views = this.webviewsByDocument.get(documentKey);
+      if (!views) {
+        return;
+      }
+
+      views.delete(webviewPanel.webview);
+      if (!views.size) {
+        this.webviewsByDocument.delete(documentKey);
+      }
+    });
+  }
+
+  public async notifyCommentAuthorChanged(): Promise<void> {
+    const commentAuthor = this.resolveCommentAuthor();
+    const message: ExtensionToWebviewMessage = {
+      type: 'commentAuthorUpdated',
+      payload: {
+        commentAuthor
+      }
+    };
+
+    const deliveries: Array<Thenable<boolean>> = [];
+    for (const webviews of this.webviewsByDocument.values()) {
+      for (const webview of webviews) {
+        deliveries.push(webview.postMessage(message));
+      }
+    }
+
+    await Promise.all(deliveries);
   }
 
   private async postInitialState(uri: vscode.Uri, webview: vscode.Webview): Promise<void> {

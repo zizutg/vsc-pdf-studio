@@ -956,6 +956,7 @@ function renderComments(comments) {
         if (state.showAllComments) {
           return;
         }
+        state.openMarkupNoteId = null;
         state.openCommentId = state.openCommentId === comment.id ? null : comment.id;
         renderComments(state.sessionAnnotations.comments);
       });
@@ -1002,6 +1003,7 @@ function renderComments(comments) {
         popup.querySelector('.comment-popup-text').textContent = comment.text;
         popup.querySelector('.comment-edit').addEventListener('click', () => {
           state.openCommentId = null;
+          state.openMarkupNoteId = null;
           state.showAllComments = false;
           updateCommentViewsToggleState();
           state.commentComposer = {
@@ -1020,6 +1022,7 @@ function renderComments(comments) {
         });
         popup.querySelector('.comment-delete').addEventListener('click', () => {
           state.openCommentId = null;
+          state.openMarkupNoteId = null;
           applySessionAnnotations({
             ...state.sessionAnnotations,
             comments: state.sessionAnnotations.comments.filter((candidate) => candidate.id !== comment.id)
@@ -1144,6 +1147,12 @@ function renderAttachedMarkupNotes(pageEntry) {
     marker.title = 'Open attached note';
     marker.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (state.commentComposer) {
+        submitCommentComposer();
+        if (state.commentComposer) {
+          cancelCommentComposer();
+        }
+      }
       state.showAllComments = false;
       state.openCommentId = null;
       state.openMarkupNoteId = state.openMarkupNoteId === highlight.id ? null : highlight.id;
@@ -1195,6 +1204,12 @@ function renderAttachedMarkupNotes(pageEntry) {
     popup.querySelector('.comment-popup-author').textContent = dateLabel ? `${authorLabel}: ${dateLabel}` : authorLabel;
     popup.querySelector('.comment-popup-text').textContent = highlight.attachedNote.text;
     popup.querySelector('.comment-edit').addEventListener('click', () => {
+      if (state.commentComposer) {
+        submitCommentComposer();
+        if (state.commentComposer) {
+          cancelCommentComposer();
+        }
+      }
       state.openMarkupNoteId = null;
       state.showAllComments = false;
       updateCommentViewsToggleState();
@@ -2814,6 +2829,15 @@ window.addEventListener('message', async (event) => {
     state.formFields = structuredClone(message.payload.formFields);
     renderFormFields();
     updateInteractionMode();
+  }
+
+  if (message.type === 'commentAuthorUpdated') {
+    state.commentAuthor = message.payload.commentAuthor || 'PDF Studio';
+    if (state.commentComposer && !state.commentComposer.author) {
+      renderComments(state.sessionAnnotations.comments);
+    } else if (state.openCommentId !== null || state.openMarkupNoteId !== null || state.showAllComments) {
+      renderComments(state.sessionAnnotations.comments);
+    }
   }
 
   if (message.type === 'error') {

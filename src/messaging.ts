@@ -22,6 +22,12 @@ export type ExtensionToWebviewMessage =
       };
     }
   | {
+      type: 'commentAuthorUpdated';
+      payload: {
+        commentAuthor: string;
+      };
+    }
+  | {
       type: 'saved';
       payload: {
         savedAt: string;

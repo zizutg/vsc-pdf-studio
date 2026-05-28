@@ -46,7 +46,8 @@
     "vscode"
   ],
   "activationEvents": [
-    "onCustomEditor:pdfStudio.editor"
+    "onCustomEditor:pdfStudio.editor",
+    "onCommand:pdfStudio.setCommentAuthor"
   ],
   "main": "./out/src/extension.js",
   "contributes": {
@@ -60,6 +61,12 @@
         }
       }
     },
+    "commands": [
+      {
+        "command": "pdfStudio.setCommentAuthor",
+        "title": "PDF Studio: Set Comment Author"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "pdfStudio.editor",

@@ -44,6 +44,7 @@ class PdfEditorProvider {
     context;
     saveManager;
     static viewType = constants_1.PDF_STUDIO_VIEW_TYPE;
+    webviewsByDocument = new Map();
     constructor(context, saveManager) {
         this.context = context;
         this.saveManager = saveManager;
@@ -58,6 +59,10 @@ class PdfEditorProvider {
         };
     }
     async resolveCustomEditor(document, webviewPanel) {
+        const documentKey = document.uri.toString();
+        const webviews = this.webviewsByDocument.get(documentKey) ?? new Set();
+        webviews.add(webviewPanel.webview);
+        this.webviewsByDocument.set(documentKey, webviews);
         webviewPanel.webview.options = {
             enableScripts: true,
             localResourceRoots: [this.context.extensionUri]
@@ -83,6 +88,32 @@ class PdfEditorProvider {
                 }
             }
         });
+        webviewPanel.onDidDispose(() => {
+            const views = this.webviewsByDocument.get(documentKey);
+            if (!views) {
+                return;
+            }
+            views.delete(webviewPanel.webview);
+            if (!views.size) {
+                this.webviewsByDocument.delete(documentKey);
+            }
+        });
+    }
+    async notifyCommentAuthorChanged() {
+        const commentAuthor = this.resolveCommentAuthor();
+        const message = {
+            type: 'commentAuthorUpdated',
+            payload: {
+                commentAuthor
+            }
+        };
+        const deliveries = [];
+        for (const webviews of this.webviewsByDocument.values()) {
+            for (const webview of webviews) {
+                deliveries.push(webview.postMessage(message));
+            }
+        }
+        await Promise.all(deliveries);
     }
     async postInitialState(uri, webview) {
         try {

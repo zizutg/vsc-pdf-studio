@@ -4,6 +4,8 @@
 
 - Added view, edit, and delete support for note-bearing highlights, underlines, and strikeouts imported from other PDF editors
 - Adjusted the shared color button so it matches the sizing and responsive behavior of the other toolbar buttons
+- Added a `PDF Studio: Set Comment Author` command for updating the comment author setting from the Command Palette
+- Made comment author setting changes update open PDF Studio editors without requiring a reload
 
 ## 0.0.4
 

@@ -1,6 +1,17 @@
-export type PdfFormFieldType = 'text' | 'checkbox' | 'radio' | 'dropdown' | 'optionList' | 'button';
+export type PdfFormFieldType =
+  | 'text'
+  | 'checkbox'
+  | 'radio'
+  | 'dropdown'
+  | 'optionList'
+  | 'button';
 export type PdfTextFieldSemantic = 'generic' | 'fullName' | 'email' | 'date';
-export type PdfButtonActionType = 'reset' | 'submit' | 'mailto' | 'uri' | 'unsupported';
+export type PdfButtonActionType =
+  | 'reset'
+  | 'submit'
+  | 'mailto'
+  | 'uri'
+  | 'unsupported';
 
 export interface PdfFormFieldWidget {
   id: string;

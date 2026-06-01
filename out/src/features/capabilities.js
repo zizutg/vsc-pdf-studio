@@ -13,8 +13,8 @@ function createDefaultCapabilities() {
             outline: true,
             pageNavigation: true,
             copySelection: true,
-            formFill: true
-        }
+            formFill: true,
+        },
     };
 }
 function hasFeature(capabilities, feature) {

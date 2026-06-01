@@ -10,5 +10,5 @@ export const PDF_STUDIO_LIMITS = {
   maxRectsPerHighlight: 256,
   maxComments: 1_000,
   maxRectsPerComment: 256,
-  maxCommentLength: 8_000
+  maxCommentLength: 8_000,
 } as const;

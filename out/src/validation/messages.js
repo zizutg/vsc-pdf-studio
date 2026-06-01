@@ -15,18 +15,20 @@ function parseWebviewMessage(input) {
             type: 'documentChanged',
             payload: {
                 annotations: (0, annotationDocument_1.sanitizeAnnotationDocument)(input.payload.annotations),
-                formFields: (0, formFields_1.sanitizeFormFields)(input.payload.formFields)
-            }
+                formFields: (0, formFields_1.sanitizeFormFields)(input.payload.formFields),
+            },
         };
     }
-    if (input.type === 'buttonActivated' && isObject(input.payload) && typeof input.payload.name === 'string') {
+    if (input.type === 'buttonActivated' &&
+        isObject(input.payload) &&
+        typeof input.payload.name === 'string') {
         return {
             type: 'buttonActivated',
             payload: {
                 name: input.payload.name,
                 annotations: (0, annotationDocument_1.sanitizeAnnotationDocument)(input.payload.annotations),
-                formFields: (0, formFields_1.sanitizeFormFields)(input.payload.formFields)
-            }
+                formFields: (0, formFields_1.sanitizeFormFields)(input.payload.formFields),
+            },
         };
     }
     return null;

@@ -1,63 +1,45 @@
 import { createAutoSaver } from './autosave.js';
+import { createBookmarkController } from './bookmarks.js';
+import {
+  renderCommentLayer,
+  renderSelectionActionOverlay,
+} from './commentUI.js';
 import { createDrawingLayer } from './drawingLayer.js';
+import { createFormController } from './forms.js';
+import { createInteractionController } from './interaction.js';
+import {
+  applyTextFieldValidationState,
+  createSelectControl,
+  getButtonActionState,
+  getTextFieldValidationError,
+  normalizeDateValueForInput,
+  normalizeDateValueForStorage,
+} from './formUtils.js';
+import {
+  cloneAnnotations,
+  cloneBookmarks,
+  compareBookmarks,
+  createHistoryEntry,
+  pushHistoryEntry as pushHistoryEntryState,
+  syncOutlineState,
+} from './historyState.js';
+import { icons } from './icons.js';
 import { renderPdf } from './pdfRenderer.js';
+import {
+  escapeHtml,
+  escapeRegExp,
+  findTextNode,
+  formatCommentDate,
+  normalizeSelectedText,
+  slugify,
+} from './textUtils.js';
+import { createSearchController } from './search.js';
+import { createSelectionController } from './selection.js';
+import { createSidebarController } from './sidebar.js';
+import { createViewportController } from './viewport.js';
 
 const vscode = acquireVsCodeApi();
 const app = document.querySelector('#app');
-const MAX_HISTORY_ENTRIES = 30;
-
-function createLucideIcon(paths, attrs = '') {
-  return `
-    <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" ${attrs}>
-      ${paths}
-    </svg>
-  `;
-}
-
-const icons = {
-  minus: createLucideIcon('<path d="M5 12h14" />'),
-  plus: createLucideIcon('<path d="M12 5v14" /><path d="M5 12h14" />'),
-  pen: createLucideIcon(
-    '<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />'
-  ),
-  highlighter: createLucideIcon(
-    '<path d="m9 11-6 6v3h9l6-6" /><path d="m22 12-4-4" /><path d="M8 16l-2-2" />'
-  ),
-  underline: createLucideIcon('<path d="M6 4v6a6 6 0 0 0 12 0V4" /><path d="M4 20h16" />'),
-  strikeout: createLucideIcon('<path d="M6 4v2a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v2" /><path d="M4 12h16" />'),
-  comment: createLucideIcon(
-    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M8 10h8" /><path d="M8 7h6" />'
-  ),
-  commentsExpanded: createLucideIcon(
-    '<path d="M4 5h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8l-4 4z" /><path d="M14 9h5a2 2 0 0 1 2 2v8l-3-3h-4" />'
-  ),
-  search: createLucideIcon('<circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />'),
-  layoutDouble: createLucideIcon('<rect x="3" y="5" width="7" height="14" rx="1.5" /><rect x="14" y="5" width="7" height="14" rx="1.5" />'),
-  layoutSingle: createLucideIcon('<rect x="6" y="5" width="12" height="14" rx="1.5" />'),
-  pointer: createLucideIcon('<path d="m4 4 7.5 18 2.5-7 7-2.5L4 4Z" /><path d="m13 13 6 6" />'),
-  eraser: createLucideIcon(
-    '<path d="m7 21 10.6-10.6a2 2 0 0 0 0-2.8l-3.2-3.2a2 2 0 0 0-2.8 0L1 15" /><path d="m5 11 8 8" /><path d="M22 21H7" />'
-  ),
-  undo: createLucideIcon('<path d="M9 14 4 9l5-5" /><path d="M4 9h9a7 7 0 1 1 0 14h-1" />'),
-  redo: createLucideIcon('<path d="m15 14 5-5-5-5" /><path d="M20 9h-9a7 7 0 1 0 0 14h1" />'),
-  menu: createLucideIcon('<path d="M4 12h16" /><path d="M4 6h16" /><path d="M4 18h16" />'),
-  floppy: createLucideIcon(
-    '<path d="M4 7a2 2 0 0 1 2-2h9l5 5v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M10 5v4h4" /><path d="M8 19v-6h8v6" />'
-  ),
-  close: createLucideIcon('<path d="m18 6-12 12" /><path d="m6 6 12 12" />'),
-  trash: createLucideIcon(
-    '<path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" />'
-  ),
-  edit: createLucideIcon('<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />')
-  ,
-  copy: createLucideIcon('<rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />'),
-  bookmark: createLucideIcon('<path d="M6 4h12a1 1 0 0 1 1 1v16l-7-4-7 4V5a1 1 0 0 1 1-1Z" />'),
-  sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
-  chevronLeft: createLucideIcon('<path d="m15 18-6-6 6-6" />', 'stroke-width="2.25"'),
-  chevronRight: createLucideIcon('<path d="m9 18 6-6-6-6" />', 'stroke-width="2.25"'),
-  chevronDown: createLucideIcon('<path d="m6 9 6 6 6-6" />', 'stroke-width="2.25"')
-};
-
 const state = {
   fileName: 'PDF',
   commentAuthor: 'PDF Studio',
@@ -81,7 +63,7 @@ const state = {
     updatedAt: new Date(0).toISOString(),
     strokes: [],
     highlights: [],
-    comments: []
+    comments: [],
   },
   formFields: [],
   history: [],
@@ -106,25 +88,10 @@ const state = {
   searchQuery: '',
   searchMatches: [],
   activeSearchMatchIndex: -1,
-  colorPopoverOwner: null
+  colorPopoverOwner: null,
 };
 
-function formatCommentDate(value) {
-  if (!value) {
-    return '';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }).format(date);
-}
+const MAX_HISTORY_ENTRIES = 30;
 
 app.innerHTML = `
   <div class="toolbar">
@@ -281,366 +248,195 @@ let drawingLayer = null;
 let zoomRerenderTimer = null;
 let zoomRenderRequestId = 0;
 let resizeRerenderTimer = null;
-let formSaveTimer = null;
 
 const autoSaver = createAutoSaver(() => {
   requestSave();
 });
 
-state.history = [{ annotations: structuredClone(state.sessionAnnotations), bookmarks: [] }];
+state.history = [createHistoryEntry(state.sessionAnnotations, [])];
 
-function cloneAnnotations(annotations) {
-  return structuredClone(annotations);
-}
+let sidebarController;
+let viewportController;
+let interactionController;
 
-function cloneBookmarks(bookmarks) {
-  return structuredClone(bookmarks);
-}
+sidebarController = createSidebarController({
+  state,
+  contentShellEl,
+  sidebarEl,
+  sidebarToggleEl,
+  sidebarTabsEl,
+  outlineTabEl,
+  pagesPanelEl,
+  outlinePanelEl,
+  pageListEl,
+  outlineListEl,
+  workspaceEl,
+  escapeHtml,
+  icons,
+  jumpToPage: (...args) => viewportController.jumpToPage(...args),
+  getPageScrollTop: (...args) => viewportController.getPageScrollTop(...args),
+});
 
-function createHistoryEntry(annotations = state.sessionAnnotations, bookmarks = state.bookmarks) {
-  return {
-    annotations: cloneAnnotations(annotations),
-    bookmarks: cloneBookmarks(bookmarks)
-  };
-}
+const searchController = createSearchController({
+  state,
+  workspaceEl,
+  searchPanelEl,
+  searchButtonEl,
+  searchInputEl,
+  searchCountEl,
+  searchPrevEl,
+  searchNextEl,
+  findTextNode,
+  getPageScrollTop: (...args) => viewportController.getPageScrollTop(...args),
+  updateCurrentPageFromScroll: (...args) =>
+    viewportController.updateCurrentPageFromScroll(...args),
+  updatePageIndicator: (...args) =>
+    viewportController.updatePageIndicator(...args),
+});
 
-function pushHistoryEntry(entry) {
-  state.history = state.history.slice(0, state.historyIndex + 1);
-  state.history.push(entry);
-  if (state.history.length > MAX_HISTORY_ENTRIES) {
-    const overflow = state.history.length - MAX_HISTORY_ENTRIES;
-    state.history.splice(0, overflow);
-  }
-  state.historyIndex = state.history.length - 1;
-}
+const formsController = createFormController({
+  state,
+  vscode,
+  applyTextFieldValidationState,
+  createSelectControl,
+  getButtonActionState,
+  getTextFieldValidationError,
+  normalizeDateValueForInput,
+  normalizeDateValueForStorage,
+  slugify,
+  requestSave,
+});
 
-function mergeOutlineItems(bookmarks, outlineItems) {
-  const merged = [];
-  let bookmarkIndex = 0;
-  let outlineIndex = 0;
+const selectionController = createSelectionController({
+  state,
+  workspaceEl,
+  normalizeSelectedText,
+  applySessionAnnotations,
+  renderSelectionAction,
+  renderComments,
+});
 
-  while (bookmarkIndex < bookmarks.length && outlineIndex < outlineItems.length) {
-    if (compareBookmarks(bookmarks[bookmarkIndex], outlineItems[outlineIndex]) <= 0) {
-      merged.push(bookmarks[bookmarkIndex]);
-      bookmarkIndex += 1;
-    } else {
-      merged.push(outlineItems[outlineIndex]);
-      outlineIndex += 1;
-    }
-  }
+const bookmarkController = createBookmarkController({
+  state,
+  cloneBookmarks,
+  compareBookmarks,
+  createHistoryEntry,
+  pushHistoryEntry,
+  syncOutlineState,
+  renderSidebar: (...args) => sidebarController.renderSidebar(...args),
+  updateHistoryState: (...args) =>
+    interactionController.updateHistoryState(...args),
+  setSidebarTab: (...args) => sidebarController.setSidebarTab(...args),
+  setSidebarOpen: (...args) => sidebarController.setSidebarOpen(...args),
+  renderSelectionAction,
+});
 
-  while (bookmarkIndex < bookmarks.length) {
-    merged.push(bookmarks[bookmarkIndex]);
-    bookmarkIndex += 1;
-  }
+const {
+  getOutlineKey,
+  expandOutlinePathForPage,
+  renderSidebar,
+  updateSidebarActiveState,
+  setSidebarTab,
+  updateSidebarTabUI,
+  setSidebarOpen,
+} = sidebarController;
+const {
+  renderSearchHighlights,
+  setSearchOpen,
+  updateSearchUI,
+  updateSearchResults,
+  revealSearchMatch,
+  moveSearchMatch,
+} = searchController;
+const {
+  renderFormFields,
+  updateFormFieldValue,
+  queueFormFieldSave,
+  activateButtonField,
+} = formsController;
+const {
+  findPageEntryFromNode,
+  addHighlightFromSelection,
+  snapshotSelection,
+  addCommentFromSelection,
+} = selectionController;
+const { applyBookmarks, addBookmarkFromSelection } = bookmarkController;
 
-  while (outlineIndex < outlineItems.length) {
-    merged.push(outlineItems[outlineIndex]);
-    outlineIndex += 1;
-  }
+viewportController = createViewportController({
+  state,
+  workspaceEl,
+  pageInputEl,
+  pageTotalEl,
+  zoomPresetEl,
+  strokeColorEl,
+  colorChipEl,
+  colorButtonEl,
+  colorPaletteEl,
+  outlineListEl,
+  renderSidebar: (...args) => sidebarController.renderSidebar(...args),
+  updateSidebarActiveState: (...args) =>
+    sidebarController.updateSidebarActiveState(...args),
+  expandOutlinePathForPage: (...args) =>
+    sidebarController.expandOutlinePathForPage(...args),
+});
 
-  return merged;
-}
+interactionController = createInteractionController({
+  state,
+  toolbarEl,
+  colorPopoverEl,
+  colorButtonEl,
+  modeToggleEl,
+  commentButtonEl,
+  commentViewsToggleEl,
+  pagesEl,
+  layoutToggleEl,
+  menuPanelEl,
+  menuButtonEl,
+  icons,
+  updateSidebarActiveState: (...args) =>
+    sidebarController.updateSidebarActiveState(...args),
+  submitCommentComposer,
+  cancelCommentComposer,
+  renderComments,
+  scheduleZoomRerender,
+  createZoomContext,
+});
 
-function syncOutlineState() {
-  state.outline = mergeOutlineItems(state.bookmarks, state.externalOutline);
-}
-
-function compareBookmarks(left, right) {
-  if ((left.pageNumber ?? 0) !== (right.pageNumber ?? 0)) {
-    return (left.pageNumber ?? 0) - (right.pageNumber ?? 0);
-  }
-  if ((left.topRatio ?? 0) !== (right.topRatio ?? 0)) {
-    return (left.topRatio ?? 0) - (right.topRatio ?? 0);
-  }
-  return String(left.title || '').localeCompare(String(right.title || ''));
-}
-
-function applyBookmarks(bookmarks, options = {}) {
-  state.bookmarks = cloneBookmarks(bookmarks);
-  syncOutlineState();
-  renderSidebar(options.reveal ? { reveal: true } : {});
-
-  if (!options.skipHistory) {
-    pushHistoryEntry(createHistoryEntry(state.sessionAnnotations, state.bookmarks));
-  }
-
-  updateHistoryState();
-}
+const {
+  updatePageIndicator,
+  updateZoomPresetIndicator,
+  updateCurrentPageFromScroll,
+  setActiveColor,
+  getCommentOverlayPlacement,
+  jumpToPage,
+  getPageScrollTop,
+} = viewportController;
+const {
+  setColorPopoverOpen,
+  updateCommentViewsToggleState,
+  setMode,
+  updateInteractionMode,
+  updateHistoryState,
+  updateLayoutState,
+  setMenuOpen,
+  setPageLayout,
+  isTextEditingTarget,
+} = interactionController;
 
 function restoreHistoryEntry(entry) {
   state.bookmarks = cloneBookmarks(entry.bookmarks || []);
-  syncOutlineState();
+  syncOutlineState(state);
   applySessionAnnotations(entry.annotations, {
-    skipHistory: true
+    skipHistory: true,
   });
   renderSidebar();
 }
 
+function pushHistoryEntry(entry) {
+  pushHistoryEntryState(state, entry, MAX_HISTORY_ENTRIES);
+}
+
 updateCommentViewsToggleState();
-
-function findTextNode(node) {
-  if (!node) {
-    return null;
-  }
-  if (node.nodeType === Node.TEXT_NODE) {
-    return node;
-  }
-
-  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-  return walker.nextNode();
-}
-
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function normalizeSelectedText(text) {
-  return text
-    .replace(/\r/g, '')
-    .split('\n')
-    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-function getOutlineKey(item, path) {
-  return `${path.join('.')}:${item.pageNumber ?? ''}:${item.title}`;
-}
-
-function ensureSidebarItemVisible(container, item) {
-  if (!container || !item || container.hidden || sidebarEl.hidden) {
-    return;
-  }
-
-  const sidebarRect = container.getBoundingClientRect();
-  const itemRect = item.getBoundingClientRect();
-  const padding = 12;
-
-  if (itemRect.top < sidebarRect.top + padding) {
-    container.scrollTop -= sidebarRect.top + padding - itemRect.top;
-    return;
-  }
-
-  if (itemRect.bottom > sidebarRect.bottom - padding) {
-    container.scrollTop += itemRect.bottom - (sidebarRect.bottom - padding);
-  }
-}
-
-function expandOutlinePathForPage(items, pageNumber, path = []) {
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    const itemPath = path.concat(index);
-    const itemKey = getOutlineKey(item, itemPath);
-    if (item.pageNumber === pageNumber) {
-      for (let ancestorLength = 1; ancestorLength < itemPath.length; ancestorLength += 1) {
-        const ancestorPath = itemPath.slice(0, ancestorLength);
-        const ancestor = ancestorPath.reduce((current, pathIndex) => current?.items?.[pathIndex], { items });
-        if (ancestor) {
-          state.collapsedOutline[getOutlineKey(ancestor, ancestorPath)] = false;
-        }
-      }
-      return true;
-    }
-
-    if (item.items?.length && expandOutlinePathForPage(item.items, pageNumber, itemPath)) {
-      state.collapsedOutline[itemKey] = false;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function renderSidebar(options = {}) {
-  pageListEl.replaceChildren();
-
-  for (const pageEntry of state.pageEntries) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'sidebar-item page-nav-item';
-    button.dataset.page = String(pageEntry.pageNumber);
-    button.innerHTML = `
-      <img class="page-nav-thumb" src="${pageEntry.thumbnailDataUrl}" alt="Page ${pageEntry.pageNumber} preview" />
-      <span class="page-nav-copy">
-        <span class="sidebar-item-title">Page ${pageEntry.pageNumber}</span>
-      </span>
-    `;
-    button.addEventListener('click', () => {
-        jumpToPage(pageEntry.pageNumber);
-      });
-    pageListEl.append(button);
-  }
-
-  outlineListEl.replaceChildren();
-  outlineTabEl.hidden = state.outline.length === 0;
-  outlineTabEl.textContent = state.outline.length ? `Bookmarks (${countOutlineItems(state.outline)})` : 'Bookmarks';
-  if (!state.outline.length && state.sidebarTab === 'outline') {
-    state.sidebarTab = 'pages';
-  } else if (state.outline.length && state.sidebarTab !== 'outline' && !state.sidebarOpen) {
-    state.sidebarTab = 'outline';
-  }
-
-  function appendOutlineItems(items, path = []) {
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      const itemPath = path.concat(index);
-      const itemKey = getOutlineKey(item, itemPath);
-      const isCollapsed = Boolean(state.collapsedOutline[itemKey]);
-      const hasChildren = Boolean(item.items?.length);
-      const entry = document.createElement(item.pageNumber ? 'button' : 'div');
-      entry.className = 'sidebar-item outline-item';
-      entry.style.setProperty('--depth', String(item.depth ?? path.length));
-      entry.dataset.outlineKey = itemKey;
-      if (item.pageNumber) {
-        entry.dataset.page = String(item.pageNumber);
-        entry.dataset.outlineTop = String(item.topRatio ?? 0);
-      }
-      entry.innerHTML = `
-        <span class="outline-chevron">${hasChildren ? (isCollapsed ? icons.chevronRight : icons.chevronDown) : ''}</span>
-        <span class="sidebar-item-title">${escapeHtml(item.title)}</span>
-        <span class="sidebar-item-meta">${item.pageNumber ? `p. ${item.pageNumber}` : 'Label only'}</span>
-      `;
-
-      if (item.pageNumber) {
-        entry.type = 'button';
-        entry.addEventListener('click', () => {
-          jumpToPage(item.pageNumber, itemKey, item.topRatio ?? null);
-        });
-      } else {
-        entry.classList.add('is-static');
-      }
-
-      if (hasChildren) {
-        entry.classList.add('has-children');
-        const chevron = entry.querySelector('.outline-chevron');
-        if (chevron) {
-          chevron.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            state.collapsedOutline[itemKey] = !isCollapsed;
-            renderSidebar();
-          });
-        }
-      }
-
-      outlineListEl.append(entry);
-
-      if (hasChildren && !isCollapsed) {
-        appendOutlineItems(item.items, itemPath);
-      }
-    }
-  }
-
-  appendOutlineItems(state.outline);
-  updateSidebarTabUI();
-  updateSidebarActiveState(options);
-}
-
-function countOutlineItems(items) {
-  let count = 0;
-  for (const item of items) {
-    count += 1;
-    if (item.items?.length) {
-      count += countOutlineItems(item.items);
-    }
-  }
-  return count;
-}
-
-function updateSidebarActiveState(options = {}) {
-  const pageNumber = String(state.currentPage);
-  const currentPageEntry = state.pageEntries.find((entry) => entry.pageNumber === state.currentPage);
-  const currentPageProgress = currentPageEntry
-    ? Math.max(
-        0,
-        Math.min(1, (workspaceEl.scrollTop - getPageScrollTop(currentPageEntry)) / Math.max(currentPageEntry.height, 1))
-      )
-    : 0;
-  let activePageItem = null;
-  for (const item of pageListEl.querySelectorAll('.sidebar-item')) {
-    const isActive = item.dataset.page === pageNumber;
-    item.classList.toggle('is-active', isActive);
-    if (isActive) {
-      activePageItem = item;
-    }
-  }
-
-  const preferredOutlineItem =
-    state.activeOutlineKey && outlineListEl.querySelector(`.sidebar-item[data-outline-key="${CSS.escape(state.activeOutlineKey)}"]`);
-  let activeOutlineItem = null;
-  let bestOutlineDistance = Number.POSITIVE_INFINITY;
-  let bestOutlineDepth = -1;
-
-  for (const item of outlineListEl.querySelectorAll('.sidebar-item')) {
-    item.classList.remove('is-active');
-
-    if (preferredOutlineItem === item && item.dataset.page === pageNumber) {
-      activeOutlineItem = item;
-      continue;
-    }
-
-    if (!preferredOutlineItem && item.dataset.page === pageNumber) {
-      const depth = Number(item.style.getPropertyValue('--depth'));
-      const outlineTop = Number(item.dataset.outlineTop ?? '0');
-      const distance = Math.abs(outlineTop - currentPageProgress);
-      if (
-        distance < bestOutlineDistance - 0.0001 ||
-        (Math.abs(distance - bestOutlineDistance) <= 0.0001 && depth >= bestOutlineDepth)
-      ) {
-        bestOutlineDistance = distance;
-        bestOutlineDepth = depth;
-        activeOutlineItem = item;
-      }
-    }
-  }
-
-  if (activeOutlineItem) {
-    activeOutlineItem.classList.add('is-active');
-  }
-
-  const activeItem = state.sidebarTab === 'outline' ? activeOutlineItem : activePageItem;
-  if (options.reveal && activeItem) {
-    ensureSidebarItemVisible(state.sidebarTab === 'outline' ? outlinePanelEl : pagesPanelEl, activeItem);
-  }
-}
-
-function setSidebarTab(nextTab) {
-  state.sidebarTab = nextTab;
-  updateSidebarTabUI();
-  updateSidebarActiveState({ reveal: true });
-}
-
-function updateSidebarTabUI() {
-  for (const tab of sidebarTabsEl.querySelectorAll('.sidebar-tab')) {
-    tab.classList.toggle('is-active', tab.dataset.tab === state.sidebarTab);
-  }
-
-  pagesPanelEl.hidden = state.sidebarTab !== 'pages';
-  outlinePanelEl.hidden = state.sidebarTab !== 'outline';
-}
-
-function setSidebarOpen(nextOpen) {
-  state.sidebarOpen = nextOpen;
-  contentShellEl.classList.toggle('is-sidebar-collapsed', !nextOpen);
-  sidebarEl.hidden = !nextOpen;
-  sidebarToggleEl.classList.toggle('is-active', nextOpen);
-  sidebarToggleEl.setAttribute('aria-pressed', String(nextOpen));
-  if (nextOpen) {
-    updateSidebarTabUI();
-    updateSidebarActiveState({ reveal: true });
-  }
-}
-
-function escapeHtml(text) {
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
 
 function renderHighlights(highlights) {
   for (const pageEntry of state.pageEntries) {
@@ -651,8 +447,12 @@ function renderHighlights(highlights) {
         continue;
       }
 
-      const scaleX = pageEntry.width / Math.max(highlight.viewportWidth || pageEntry.width, 1);
-      const scaleY = pageEntry.height / Math.max(highlight.viewportHeight || pageEntry.height, 1);
+      const scaleX =
+        pageEntry.width /
+        Math.max(highlight.viewportWidth || pageEntry.width, 1);
+      const scaleY =
+        pageEntry.height /
+        Math.max(highlight.viewportHeight || pageEntry.height, 1);
 
       for (const rect of highlight.rects) {
         const box = document.createElement('div');
@@ -664,12 +464,18 @@ function renderHighlights(highlights) {
         box.style.backgroundColor = highlight.color;
         if (highlight.kind === 'underline') {
           box.style.opacity = '1';
-          const lineThickness = Math.max(2, Math.min(rect.height * scaleY * 0.16, 4));
+          const lineThickness = Math.max(
+            2,
+            Math.min(rect.height * scaleY * 0.16, 4)
+          );
           box.style.height = `${lineThickness}px`;
           box.style.top = `${rect.y * scaleY + rect.height * scaleY - lineThickness}px`;
         } else if (highlight.kind === 'strikeout') {
           box.style.opacity = '1';
-          const lineThickness = Math.max(2, Math.min(rect.height * scaleY * 0.16, 4));
+          const lineThickness = Math.max(
+            2,
+            Math.min(rect.height * scaleY * 0.16, 4)
+          );
           box.style.height = `${lineThickness}px`;
           box.style.top = `${rect.y * scaleY + rect.height * scaleY * 0.5 - lineThickness * 0.5}px`;
         } else {
@@ -688,9 +494,10 @@ function renderHighlights(highlights) {
             }
             state.showAllComments = false;
             state.openCommentId = null;
-            state.openMarkupNoteId = state.openMarkupNoteId === highlight.id ? null : highlight.id;
+            state.openMarkupNoteId =
+              state.openMarkupNoteId === highlight.id ? null : highlight.id;
             updateCommentViewsToggleState();
-            renderComments(state.sessionAnnotations.comments);
+            renderComments();
           });
         }
         pageEntry.highlightLayer.append(box);
@@ -699,982 +506,33 @@ function renderHighlights(highlights) {
   }
 }
 
-function renderSearchHighlights() {
+function renderComments() {
   for (const pageEntry of state.pageEntries) {
-    pageEntry.searchLayer.replaceChildren();
-  }
-
-  for (let index = 0; index < state.searchMatches.length; index += 1) {
-    const match = state.searchMatches[index];
-    const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === match.pageNumber);
-    if (!pageEntry) {
-      continue;
-    }
-
-    for (const rect of match.rects) {
-      const box = document.createElement('div');
-      box.className = `search-box${index === state.activeSearchMatchIndex ? ' is-active' : ''}`;
-      box.style.left = `${rect.x}px`;
-      box.style.top = `${rect.y}px`;
-      box.style.width = `${rect.width}px`;
-      box.style.height = `${rect.height}px`;
-      pageEntry.searchLayer.append(box);
-    }
-  }
-}
-
-function setSearchOpen(nextOpen) {
-  state.searchOpen = nextOpen;
-  searchPanelEl.hidden = !nextOpen;
-  searchButtonEl.classList.toggle('is-active', nextOpen);
-  if (nextOpen) {
-    window.setTimeout(() => {
-      searchInputEl.focus();
-      searchInputEl.select();
-    }, 0);
-  }
-}
-
-function updateSearchUI() {
-  const total = state.searchMatches.length;
-  const current = total && state.activeSearchMatchIndex >= 0 ? state.activeSearchMatchIndex + 1 : 0;
-  searchCountEl.textContent = `${current} / ${total}`;
-  searchPrevEl.disabled = total === 0;
-  searchNextEl.disabled = total === 0;
-}
-
-function computePageSearchMatches(pageEntry, query) {
-  const textItems = pageEntry.textContentItemsStr ?? [];
-  const textDivs = pageEntry.textDivs ?? [];
-  if (!textItems.length || !textDivs.length) {
-    return [];
-  }
-
-  const pageText = textItems.join('');
-  const normalizedQuery = query.toLocaleLowerCase();
-  const normalizedText = pageText.toLocaleLowerCase();
-  const matches = [];
-  const starts = [];
-  let total = 0;
-  for (const item of textItems) {
-    starts.push(total);
-    total += item.length;
-  }
-
-  function findItemIndex(offset) {
-    let low = 0;
-    let high = starts.length - 1;
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      const start = starts[mid];
-      const end = start + textItems[mid].length;
-      if (offset < start) {
-        high = mid - 1;
-      } else if (offset >= end) {
-        low = mid + 1;
-      } else {
-        return mid;
-      }
-    }
-    return -1;
-  }
-
-  let searchIndex = 0;
-  while (searchIndex <= normalizedText.length) {
-    const matchIndex = normalizedText.indexOf(normalizedQuery, searchIndex);
-    if (matchIndex === -1) {
-      break;
-    }
-
-    const endIndex = matchIndex + normalizedQuery.length;
-    const startItemIndex = findItemIndex(matchIndex);
-    const endItemIndex = findItemIndex(Math.max(matchIndex, endIndex - 1));
-    if (startItemIndex === -1 || endItemIndex === -1) {
-      searchIndex = matchIndex + 1;
-      continue;
-    }
-
-    const startNode = findTextNode(textDivs[startItemIndex]);
-    const endNode = findTextNode(textDivs[endItemIndex]);
-    if (!startNode || !endNode) {
-      searchIndex = matchIndex + 1;
-      continue;
-    }
-
-    const range = document.createRange();
-    range.setStart(startNode, matchIndex - starts[startItemIndex]);
-    range.setEnd(endNode, endIndex - starts[endItemIndex]);
-    const layerRect = pageEntry.textLayer.getBoundingClientRect();
-    const scaleX = pageEntry.width / Math.max(layerRect.width, 1);
-    const scaleY = pageEntry.height / Math.max(layerRect.height, 1);
-    const rects = Array.from(range.getClientRects())
-      .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => ({
-        x: (rect.left - layerRect.left) * scaleX,
-        y: (rect.top - layerRect.top) * scaleY,
-        width: rect.width * scaleX,
-        height: rect.height * scaleY
-      }));
-
-    if (rects.length) {
-      matches.push({
-        pageNumber: pageEntry.pageNumber,
-        rects
-      });
-    }
-
-    searchIndex = matchIndex + Math.max(normalizedQuery.length, 1);
-  }
-
-  return matches;
-}
-
-function updateSearchResults(options = {}) {
-  const query = state.searchQuery.trim();
-  if (!query) {
-    state.searchMatches = [];
-    state.activeSearchMatchIndex = -1;
-    renderSearchHighlights();
-    updateSearchUI();
-    return;
-  }
-
-  const previousMatch = options.preserveActive ? state.searchMatches[state.activeSearchMatchIndex] : null;
-  state.searchMatches = state.pageEntries.flatMap((pageEntry) => computePageSearchMatches(pageEntry, query));
-
-  if (!state.searchMatches.length) {
-    state.activeSearchMatchIndex = -1;
-  } else if (previousMatch) {
-    const restoredIndex = state.searchMatches.findIndex(
-      (match) =>
-        match.pageNumber === previousMatch.pageNumber &&
-        Math.abs((match.rects[0]?.y ?? 0) - (previousMatch.rects[0]?.y ?? 0)) < 1
-    );
-    state.activeSearchMatchIndex = restoredIndex >= 0 ? restoredIndex : 0;
-  } else if (state.activeSearchMatchIndex < 0 || state.activeSearchMatchIndex >= state.searchMatches.length) {
-    state.activeSearchMatchIndex = 0;
-  }
-
-  renderSearchHighlights();
-  updateSearchUI();
-}
-
-function revealSearchMatch(index) {
-  const match = state.searchMatches[index];
-  if (!match) {
-    return;
-  }
-
-  const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === match.pageNumber);
-  if (!pageEntry || !match.rects.length) {
-    return;
-  }
-
-  state.pageJumpInProgress = true;
-  state.currentPage = match.pageNumber;
-  updatePageIndicator();
-  const rect = match.rects[0];
-  workspaceEl.scrollTo({
-    top: getPageScrollTop(pageEntry) + Math.max(0, rect.y - 32),
-    left: Math.max(0, rect.x - 24),
-    behavior: 'auto'
-  });
-  window.setTimeout(() => {
-    state.pageJumpInProgress = false;
-    updateCurrentPageFromScroll();
-  }, 120);
-}
-
-function moveSearchMatch(direction) {
-  if (!state.searchMatches.length) {
-    return;
-  }
-
-  const total = state.searchMatches.length;
-  const nextIndex =
-    state.activeSearchMatchIndex < 0
-      ? 0
-      : (state.activeSearchMatchIndex + direction + total) % total;
-  state.activeSearchMatchIndex = nextIndex;
-  renderSearchHighlights();
-  updateSearchUI();
-  revealSearchMatch(nextIndex);
-}
-
-function renderComments(comments) {
-  for (const pageEntry of state.pageEntries) {
-    pageEntry.commentLayer.replaceChildren();
-
-    for (const comment of comments) {
-      if (comment.page !== pageEntry.pageNumber || !comment.rects.length) {
-        continue;
-      }
-
-      const firstRect = comment.rects[0];
-      const anchor = comment.rects[comment.rects.length - 1];
-      const scaleX = pageEntry.width / Math.max(comment.viewportWidth || pageEntry.width, 1);
-      const scaleY = pageEntry.height / Math.max(comment.viewportHeight || pageEntry.height, 1);
-      for (const rect of comment.rects) {
-        const highlight = document.createElement('div');
-        highlight.className = 'highlight-box comment-highlight-box';
-        highlight.style.left = `${rect.x * scaleX}px`;
-        highlight.style.top = `${rect.y * scaleY}px`;
-        highlight.style.width = `${rect.width * scaleX}px`;
-        highlight.style.height = `${rect.height * scaleY}px`;
-        highlight.style.backgroundColor = comment.color;
-        highlight.style.opacity = '0.2';
-        pageEntry.commentLayer.append(highlight);
-      }
-
-      const markerSize = 10;
-      const markerLeft = Math.min(
-        pageEntry.width - markerSize - 2,
-        Math.max(2, (anchor.x + anchor.width) * scaleX + 1)
-      );
-      const markerTop = Math.min(
-        pageEntry.height - markerSize - 2,
-        Math.max(2, anchor.y * scaleY - markerSize * 0.7)
-      );
-      const anchorRight = (anchor.x + anchor.width) * scaleX;
-      const anchorTop = firstRect.y * scaleY;
-      const marker = document.createElement('button');
-      marker.type = 'button';
-      marker.className = 'comment-marker';
-      marker.style.left = `${markerLeft}px`;
-      marker.style.top = `${markerTop}px`;
-      marker.style.backgroundColor = comment.color;
-      marker.innerHTML = icons.comment;
-      marker.title = 'Open comment';
-      marker.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (state.commentComposer) {
-          submitCommentComposer();
-          if (state.commentComposer) {
-            cancelCommentComposer();
-          }
-        }
-        if (state.showAllComments) {
-          return;
-        }
-        state.openMarkupNoteId = null;
-        state.openCommentId = state.openCommentId === comment.id ? null : comment.id;
-        renderComments(state.sessionAnnotations.comments);
-      });
-      pageEntry.commentLayer.append(marker);
-
-      if (state.showAllComments || state.openCommentId === comment.id) {
-        const popupWidth = 260;
-        const popupHeight = 72;
-        const popupGap = 10;
-        const placement = getCommentOverlayPlacement({
-          pageEntry,
-          overlayWidth: popupWidth,
-          overlayHeight: popupHeight,
-          gap: popupGap,
-          anchorRight,
-          anchorTop,
-          markerAnchorX: markerLeft + markerSize
-        });
-        const connector = document.createElement('div');
-        connector.className = 'comment-connector';
-        connector.style.left = `${placement.connectorLeft}px`;
-        connector.style.top = `${markerTop + markerSize / 2}px`;
-        connector.style.width = `${placement.connectorWidth}px`;
-        connector.style.setProperty('--comment-accent', comment.color);
-        pageEntry.commentLayer.append(connector);
-
-        const popup = document.createElement('div');
-        popup.className = 'comment-popup';
-        popup.style.left = `${placement.left}px`;
-        popup.style.top = `${placement.top}px`;
-        popup.style.borderColor = comment.color;
-        popup.style.setProperty('--comment-accent', comment.color);
-        popup.innerHTML = `
-          <div class="comment-popup-author"></div>
-          <div class="comment-popup-text"></div>
-          <div class="comment-popup-actions">
-            <button type="button" class="comment-edit" aria-label="Edit comment" title="Edit">${icons.edit}</button>
-            <button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>
-          </div>
-        `;
-        const authorLabel = comment.author || state.commentAuthor;
-        const dateLabel = formatCommentDate(comment.modifiedAt);
-        popup.querySelector('.comment-popup-author').textContent = dateLabel ? `${authorLabel}: ${dateLabel}` : authorLabel;
-        popup.querySelector('.comment-popup-text').textContent = comment.text;
-        popup.querySelector('.comment-edit').addEventListener('click', () => {
-          state.openCommentId = null;
-          state.openMarkupNoteId = null;
-          state.showAllComments = false;
-          updateCommentViewsToggleState();
-          state.commentComposer = {
-            id: comment.id,
-            sourceHighlightId: null,
-            author: comment.author || state.commentAuthor,
-            modifiedAt: comment.modifiedAt,
-            page: comment.page,
-            viewportWidth: comment.viewportWidth,
-            viewportHeight: comment.viewportHeight,
-            rects: structuredClone(comment.rects),
-            color: comment.color,
-            text: comment.text
-          };
-          renderComments(state.sessionAnnotations.comments);
-        });
-        popup.querySelector('.comment-delete').addEventListener('click', () => {
-          state.openCommentId = null;
-          state.openMarkupNoteId = null;
-          applySessionAnnotations({
-            ...state.sessionAnnotations,
-            comments: state.sessionAnnotations.comments.filter((candidate) => candidate.id !== comment.id)
-          });
-        });
-        pageEntry.commentLayer.append(popup);
-      }
-    }
-
-    if (state.commentComposer?.page === pageEntry.pageNumber && state.commentComposer.rects.length) {
-      const anchor = state.commentComposer.rects[0];
-      const scaleX = pageEntry.width / Math.max(state.commentComposer.viewportWidth || pageEntry.width, 1);
-      const scaleY = pageEntry.height / Math.max(state.commentComposer.viewportHeight || pageEntry.height, 1);
-      const composerWidth = 210;
-      const composerHeight = 110;
-      const composerGap = 10;
-      const anchorTop = anchor.y * scaleY;
-      const markerAnchorLeft = Math.max(2, (anchor.x + anchor.width) * scaleX + 1);
-      const markerAnchorTop = Math.max(2, anchor.y * scaleY + Math.max(anchor.height * scaleY * 0.5, 4));
-      const placement = getCommentOverlayPlacement({
-        pageEntry,
-        overlayWidth: composerWidth,
-        overlayHeight: composerHeight,
-        gap: composerGap,
-        anchorRight: (anchor.x + anchor.width) * scaleX,
-        anchorTop,
-        markerAnchorX: markerAnchorLeft
-      });
-      const composer = document.createElement('div');
-      composer.className = 'comment-composer';
-      const connector = document.createElement('div');
-      connector.className = 'comment-connector';
-      connector.style.left = `${placement.connectorLeft}px`;
-      connector.style.top = `${markerAnchorTop}px`;
-      connector.style.width = `${placement.connectorWidth}px`;
-      connector.style.setProperty('--comment-accent', state.commentComposer.color);
-      pageEntry.commentLayer.append(connector);
-
-      composer.style.left = `${placement.left}px`;
-      composer.style.top = `${placement.top}px`;
-      composer.style.borderColor = state.commentComposer.color;
-      composer.style.setProperty('--comment-accent', state.commentComposer.color);
-      composer.innerHTML = `
-        <div class="comment-editor-wrap">
-          <div class="comment-author-line"></div>
-          <textarea class="comment-input" placeholder="Add a comment..."></textarea>
-          <div class="comment-actions">
-            <button type="button" class="comment-save" aria-label="Save comment" title="Save">${icons.floppy}</button>
-            <button type="button" class="comment-cancel" aria-label="Close" title="Close">${icons.close}</button>
-            ${state.commentComposer.id || state.commentComposer.sourceHighlightId ? `<button type="button" class="comment-delete" aria-label="Delete comment" title="Delete">${icons.trash}</button>` : ''}
-          </div>
-        </div>
-      `;
-
-      const input = composer.querySelector('.comment-input');
-      const authorLine = composer.querySelector('.comment-author-line');
-      const saveButton = composer.querySelector('.comment-save');
-      const cancelButton = composer.querySelector('.comment-cancel');
-      const deleteButton = composer.querySelector('.comment-delete');
-      const composerAuthorLabel = state.commentComposer.author || state.commentAuthor;
-      const composerDateLabel = formatCommentDate(state.commentComposer.modifiedAt);
-      authorLine.textContent = composerDateLabel ? `${composerAuthorLabel}: ${composerDateLabel}` : composerAuthorLabel;
-      input.value = state.commentComposer.text;
-      input.addEventListener('input', () => {
-        state.commentComposer.text = input.value;
-      });
-      input.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          submitCommentComposer();
-        }
-      });
-      saveButton.addEventListener('click', () => {
-        submitCommentComposer();
-      });
-      cancelButton.addEventListener('click', () => {
-        cancelCommentComposer();
-      });
-      deleteButton?.addEventListener('click', () => {
-        deleteCommentFromComposer();
-      });
-      pageEntry.commentLayer.append(composer);
-      window.setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      }, 0);
-    }
-
-    renderAttachedMarkupNotes(pageEntry);
-  }
-}
-
-function renderAttachedMarkupNotes(pageEntry) {
-  for (const highlight of state.sessionAnnotations.highlights) {
-    if (highlight.page !== pageEntry.pageNumber || !highlight.rects.length || !highlight.attachedNote?.text) {
-      continue;
-    }
-
-    const firstRect = highlight.rects[0];
-    const anchor = highlight.rects[highlight.rects.length - 1];
-    const scaleX = pageEntry.width / Math.max(highlight.viewportWidth || pageEntry.width, 1);
-    const scaleY = pageEntry.height / Math.max(highlight.viewportHeight || pageEntry.height, 1);
-    const markerSize = 10;
-    const markerLeft = Math.min(
-      pageEntry.width - markerSize - 2,
-      Math.max(2, (anchor.x + anchor.width) * scaleX + 1)
-    );
-    const markerTop = Math.min(
-      pageEntry.height - markerSize - 2,
-      Math.max(2, anchor.y * scaleY - markerSize * 0.7)
-    );
-    const anchorRight = (anchor.x + anchor.width) * scaleX;
-    const anchorTop = firstRect.y * scaleY;
-
-    const marker = document.createElement('button');
-    marker.type = 'button';
-    marker.className = 'comment-marker markup-note-marker';
-    marker.style.left = `${markerLeft}px`;
-    marker.style.top = `${markerTop}px`;
-    marker.style.backgroundColor = highlight.color;
-    marker.innerHTML = icons.comment;
-    marker.title = 'Open attached note';
-    marker.addEventListener('click', (event) => {
-      event.stopPropagation();
-      if (state.commentComposer) {
-        submitCommentComposer();
-        if (state.commentComposer) {
-          cancelCommentComposer();
-        }
-      }
-      state.showAllComments = false;
-      state.openCommentId = null;
-      state.openMarkupNoteId = state.openMarkupNoteId === highlight.id ? null : highlight.id;
-      updateCommentViewsToggleState();
-      renderComments(state.sessionAnnotations.comments);
-    });
-    pageEntry.commentLayer.append(marker);
-
-    if (state.openMarkupNoteId !== highlight.id) {
-      continue;
-    }
-
-    const popupWidth = 260;
-    const popupHeight = 72;
-    const popupGap = 10;
-    const placement = getCommentOverlayPlacement({
+    renderCommentLayer({
       pageEntry,
-      overlayWidth: popupWidth,
-      overlayHeight: popupHeight,
-      gap: popupGap,
-      anchorRight,
-      anchorTop,
-      markerAnchorX: markerLeft + markerSize
+      state,
+      icons,
+      formatCommentDate,
+      getCommentOverlayPlacement,
+      renderComments,
+      applySessionAnnotations,
+      updateCommentViewsToggleState,
+      submitCommentComposer,
+      cancelCommentComposer,
+      renderSelectionAction,
     });
-    const connector = document.createElement('div');
-    connector.className = 'comment-connector';
-    connector.style.left = `${placement.connectorLeft}px`;
-    connector.style.top = `${markerTop + markerSize / 2}px`;
-    connector.style.width = `${placement.connectorWidth}px`;
-    connector.style.setProperty('--comment-accent', highlight.color);
-    pageEntry.commentLayer.append(connector);
-
-    const popup = document.createElement('div');
-    popup.className = 'comment-popup';
-    popup.style.left = `${placement.left}px`;
-    popup.style.top = `${placement.top}px`;
-    popup.style.borderColor = highlight.color;
-    popup.style.setProperty('--comment-accent', highlight.color);
-    popup.innerHTML = `
-      <div class="comment-popup-author"></div>
-      <div class="comment-popup-text"></div>
-      <div class="comment-popup-actions">
-        <button type="button" class="comment-edit" aria-label="Edit attached note" title="Edit">${icons.edit}</button>
-        <button type="button" class="comment-delete" aria-label="Delete attached note" title="Delete">${icons.trash}</button>
-      </div>
-    `;
-    const authorLabel = highlight.attachedNote.author || state.commentAuthor;
-    const dateLabel = formatCommentDate(highlight.attachedNote.modifiedAt);
-    popup.querySelector('.comment-popup-author').textContent = dateLabel ? `${authorLabel}: ${dateLabel}` : authorLabel;
-    popup.querySelector('.comment-popup-text').textContent = highlight.attachedNote.text;
-    popup.querySelector('.comment-edit').addEventListener('click', () => {
-      if (state.commentComposer) {
-        submitCommentComposer();
-        if (state.commentComposer) {
-          cancelCommentComposer();
-        }
-      }
-      state.openMarkupNoteId = null;
-      state.showAllComments = false;
-      updateCommentViewsToggleState();
-      state.commentComposer = {
-        id: null,
-        sourceHighlightId: highlight.id,
-        author: highlight.attachedNote.author || state.commentAuthor,
-        modifiedAt: highlight.attachedNote.modifiedAt,
-        page: highlight.page,
-        viewportWidth: highlight.viewportWidth,
-        viewportHeight: highlight.viewportHeight,
-        rects: structuredClone(highlight.rects),
-        color: highlight.color,
-        text: highlight.attachedNote.text
-      };
-      renderComments(state.sessionAnnotations.comments);
-    });
-    popup.querySelector('.comment-delete').addEventListener('click', () => {
-      state.openMarkupNoteId = null;
-      applySessionAnnotations({
-        ...state.sessionAnnotations,
-        highlights: state.sessionAnnotations.highlights.filter((candidate) => candidate.id !== highlight.id)
-      });
-    });
-    pageEntry.commentLayer.append(popup);
   }
 }
 
 function renderSelectionAction() {
-  document.querySelectorAll('.selection-action').forEach((node) => node.remove());
-
-  if (!state.selectionAction) {
-    return;
-  }
-
-  const actions = document.createElement('div');
-  actions.className = 'selection-action';
-  actions.style.left = `${state.selectionAction.left}px`;
-  actions.style.top = `${state.selectionAction.top}px`;
-  actions.innerHTML = `
-    <button type="button" class="selection-action-button selection-action-copy" aria-label="Copy selection" title="Copy">${icons.copy}</button>
-    <button type="button" class="selection-action-button selection-action-highlight" aria-label="Highlight selection" title="Highlight">${icons.highlighter}</button>
-    <button type="button" class="selection-action-button selection-action-comment" aria-label="Comment on selection" title="Comment">${icons.comment}</button>
-    <button type="button" class="selection-action-button selection-action-underline" aria-label="Underline selection" title="Underline">${icons.underline}</button>
-    <button type="button" class="selection-action-button selection-action-strikeout" aria-label="Strike out selection" title="Strike Out">${icons.strikeout}</button>
-    <button type="button" class="selection-action-button selection-action-bookmark" aria-label="Bookmark selection" title="Bookmark">${icons.bookmark}</button>
-  `;
-  actions.addEventListener('mousedown', (event) => {
-    event.preventDefault();
+  renderSelectionActionOverlay({
+    state,
+    workspaceEl,
+    icons,
+    addHighlightFromSelection,
+    addCommentFromSelection,
+    addBookmarkFromSelection,
   });
-  const [copyButton, highlightButton, commentButton, underlineButton, strikeoutButton, bookmarkButton] = actions.querySelectorAll('.selection-action-button');
-  copyButton.addEventListener('click', async (event) => {
-    event.stopPropagation();
-    const text = state.selectionSnapshot?.text?.trim();
-    if (!text) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // Best-effort fallback for older clipboard paths.
-      const fallback = document.createElement('textarea');
-      fallback.value = text;
-      fallback.setAttribute('readonly', '');
-      fallback.style.position = 'fixed';
-      fallback.style.opacity = '0';
-      document.body.append(fallback);
-      fallback.select();
-      document.execCommand('copy');
-      fallback.remove();
-    }
-    state.selectionAction = null;
-    renderSelectionAction();
-  });
-  highlightButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    addHighlightFromSelection(true, 'highlight');
-  });
-  commentButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    addCommentFromSelection();
-  });
-  underlineButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    addHighlightFromSelection(true, 'underline');
-  });
-  strikeoutButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    addHighlightFromSelection(true, 'strikeout');
-  });
-  bookmarkButton.addEventListener('click', (event) => {
-    event.stopPropagation();
-    addBookmarkFromSelection();
-  });
-  workspaceEl.append(actions);
-}
-
-function renderFormFields() {
-  for (const pageEntry of state.pageEntries) {
-    pageEntry.formLayer.replaceChildren();
-  }
-
-  for (const field of state.formFields) {
-    for (const widget of field.widgets) {
-      const pageEntry = state.pageEntries.find((entry) => entry.pageNumber === widget.page);
-      if (!pageEntry) {
-        continue;
-      }
-
-      const scaleX = pageEntry.width / Math.max(pageEntry.pdfWidth || pageEntry.width, 1);
-      const scaleY = pageEntry.height / Math.max(pageEntry.pdfHeight || pageEntry.height, 1);
-      const left = widget.x * scaleX;
-      const top = widget.y * scaleY;
-      const width = widget.width * scaleX;
-      const height = widget.height * scaleY;
-
-      let control = null;
-
-      if (field.type === 'text') {
-        control = document.createElement(field.multiline ? 'textarea' : 'input');
-        control.className = 'pdf-form-control pdf-form-text';
-        if (control instanceof HTMLInputElement) {
-          control.type = field.semantic === 'email' ? 'email' : field.semantic === 'date' ? 'date' : 'text';
-          control.value = field.semantic === 'date' ? normalizeDateValueForInput(field.value) : field.value;
-          if (field.semantic === 'fullName') {
-            control.autocomplete = 'name';
-          } else if (field.semantic === 'email') {
-            control.autocomplete = 'email';
-            control.inputMode = 'email';
-            control.spellcheck = false;
-          } else if (field.semantic === 'date') {
-            control.autocomplete = 'off';
-            control.inputMode = 'none';
-          }
-        } else {
-          control.value = field.value;
-        }
-        if (field.maxLength) {
-          control.maxLength = field.maxLength;
-        }
-        control.disabled = field.readOnly || state.mode !== 'select';
-        applyTextFieldValidationState(control, field, field.value);
-        control.addEventListener('input', () => {
-          const nextValue = field.semantic === 'date' ? normalizeDateValueForStorage(control.value) : control.value;
-          const validationError = getTextFieldValidationError(field, nextValue);
-          applyTextFieldValidationState(control, field, nextValue);
-          if (validationError) {
-            return;
-          }
-          updateFormFieldValue(field.name, nextValue);
-          queueFormFieldSave();
-        });
-      } else if (field.type === 'checkbox') {
-        control = document.createElement('input');
-        control.type = 'checkbox';
-        control.className = 'pdf-form-control pdf-form-check';
-        control.checked = field.checked;
-        control.disabled = field.readOnly || state.mode !== 'select';
-        control.addEventListener('change', () => {
-          updateFormFieldValue(field.name, control.checked);
-          queueFormFieldSave();
-        });
-      } else if (field.type === 'radio') {
-        control = document.createElement('input');
-        control.type = 'radio';
-        control.className = 'pdf-form-control pdf-form-check';
-        control.name = `pdf-radio-${slugify(field.name)}`;
-        control.checked = field.value === (widget.option ?? null);
-        control.disabled = field.readOnly || state.mode !== 'select';
-        control.addEventListener('change', () => {
-          if (!control.checked) {
-            return;
-          }
-
-          updateFormFieldValue(field.name, widget.option ?? null);
-          renderFormFields();
-          queueFormFieldSave();
-        });
-      } else if (field.type === 'dropdown') {
-        if (field.editable) {
-          control = document.createElement('input');
-          control.type = 'text';
-          control.className = 'pdf-form-control pdf-form-text';
-          control.value = field.value[0] ?? '';
-          control.disabled = field.readOnly || state.mode !== 'select';
-          const listId = `pdf-form-list-${slugify(field.name)}-${slugify(widget.id)}`;
-          control.setAttribute('list', listId);
-          const datalist = document.createElement('datalist');
-          datalist.id = listId;
-          for (const option of field.options) {
-            const optionEl = document.createElement('option');
-            optionEl.value = option;
-            datalist.append(optionEl);
-          }
-          pageEntry.formLayer.append(datalist);
-          control.addEventListener('input', () => {
-            updateFormFieldValue(field.name, control.value ? [control.value] : []);
-            queueFormFieldSave();
-          });
-        } else {
-          control = createSelectControl(field);
-        }
-      } else if (field.type === 'optionList') {
-        control = createSelectControl(field);
-      } else if (field.type === 'button') {
-        control = document.createElement('button');
-        control.type = 'button';
-        control.className = 'pdf-form-control pdf-form-button is-studio-overlay';
-        control.textContent = field.label;
-        const actionState = getButtonActionState(field);
-        control.disabled = field.readOnly || state.mode !== 'select' || !actionState.enabled;
-        control.dataset.enabled = String(actionState.enabled);
-        control.dataset.actionType = field.action?.type || 'none';
-        control.title = actionState.title;
-        control.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          activateButtonField(field.name);
-        });
-      }
-
-      if (!control) {
-        continue;
-      }
-
-      control.dataset.readOnly = String(Boolean(field.readOnly));
-      if (!control.dataset.enabled) {
-        control.dataset.enabled = 'true';
-      }
-      control.style.left = `${left}px`;
-      control.style.top = `${top}px`;
-      control.style.width = `${width}px`;
-      control.style.height = `${height}px`;
-      pageEntry.formLayer.append(control);
-    }
-  }
-}
-
-function getTextFieldValidationError(field, value) {
-  const normalizedValue = value.trim();
-  if (!normalizedValue) {
-    return null;
-  }
-
-  if (field.semantic === 'email') {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedValue) ? null : 'Enter a valid email address.';
-  }
-
-  if (field.semantic === 'date') {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(normalizedValue)) {
-      return null;
-    }
-    return 'Use YYYY-MM-DD or MM/DD/YYYY.';
-  }
-
-  return null;
-}
-
-function normalizeDateValueForInput(value) {
-  const normalizedValue = value.trim();
-  if (!normalizedValue) {
-    return '';
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-    return normalizedValue;
-  }
-
-  const match = normalizedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) {
-    return normalizedValue;
-  }
-
-  const [, month, day, year] = match;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
-
-function normalizeDateValueForStorage(value) {
-  return normalizeDateValueForInput(value);
-}
-
-function applyTextFieldValidationState(control, field, value) {
-  const validationError = getTextFieldValidationError(field, value);
-  control.classList.toggle('is-invalid', Boolean(validationError));
-  control.setAttribute('aria-invalid', validationError ? 'true' : 'false');
-
-  if (validationError) {
-    control.title = validationError;
-    return;
-  }
-
-  if (field.semantic === 'date') {
-    control.title = control instanceof HTMLInputElement && control.type === 'date'
-      ? 'Pick a date from the calendar.'
-      : 'Accepted formats: YYYY-MM-DD or MM/DD/YYYY';
-  } else {
-    control.removeAttribute('title');
-  }
-}
-
-function createSelectControl(field) {
-  const select = document.createElement('select');
-  select.className = `pdf-form-control pdf-form-select${field.type === 'optionList' ? ' is-list' : ''}`;
-  select.disabled = field.readOnly || state.mode !== 'select';
-  if (field.multiSelect) {
-    select.multiple = true;
-  } else if (field.type === 'dropdown') {
-    const emptyOption = document.createElement('option');
-    emptyOption.value = '';
-    emptyOption.textContent = '';
-    emptyOption.selected = field.value.length === 0;
-    select.append(emptyOption);
-  }
-
-  for (const option of field.options) {
-    const optionEl = document.createElement('option');
-    optionEl.value = option;
-    optionEl.textContent = option;
-    optionEl.selected = field.value.includes(option);
-    select.append(optionEl);
-  }
-
-  select.addEventListener('change', () => {
-    const selectedValues = Array.from(select.selectedOptions).map((option) => option.value);
-    updateFormFieldValue(field.name, selectedValues);
-    queueFormFieldSave();
-  });
-
-  return select;
-}
-
-function getButtonActionState(field) {
-  if (!field.action) {
-    return {
-      enabled: false,
-      title: 'This PDF button has no supported action.'
-    };
-  }
-
-  if (field.action.type === 'unsupported') {
-    return {
-      enabled: false,
-      title: field.action.reason || 'This PDF button uses an unsupported action.'
-    };
-  }
-
-  if (field.action.type === 'submit') {
-    return {
-      enabled: Boolean(field.action.url),
-      title: field.action.url ? `Submit form to ${field.action.url}` : 'This PDF button has no usable submit target.'
-    };
-  }
-
-  if (field.action.type === 'mailto') {
-    return {
-      enabled: Boolean(field.action.url),
-      title: field.action.url ? `Open email client for ${field.action.url}` : 'This PDF button has no usable mail target.'
-    };
-  }
-
-  if (field.action.type === 'uri') {
-    return {
-      enabled: Boolean(field.action.url),
-      title: field.action.url ? `Open ${field.action.url}` : 'This PDF button has no usable link target.'
-    };
-  }
-
-  if (field.action.type === 'reset') {
-    return {
-      enabled: true,
-      title: 'Reset form fields to the values from when this document was opened.'
-    };
-  }
-
-  return {
-    enabled: false,
-    title: 'This PDF button has no supported action.'
-  };
-}
-
-function updateFormFieldValue(name, nextValue) {
-  state.formFields = state.formFields.map((field) => {
-    if (field.name !== name) {
-      return field;
-    }
-
-    if (field.type === 'text') {
-      return {
-        ...field,
-        value: typeof nextValue === 'string' ? nextValue : ''
-      };
-    }
-
-    if (field.type === 'checkbox') {
-      return {
-        ...field,
-        checked: Boolean(nextValue)
-      };
-    }
-
-    if (field.type === 'radio') {
-      return {
-        ...field,
-        value: typeof nextValue === 'string' && nextValue.length ? nextValue : null
-      };
-    }
-
-    return {
-      ...field,
-      value: Array.isArray(nextValue) ? nextValue : []
-    };
-  });
-}
-
-function queueFormFieldSave() {
-  if (formSaveTimer) {
-    window.clearTimeout(formSaveTimer);
-  }
-
-  formSaveTimer = window.setTimeout(() => {
-    formSaveTimer = null;
-    requestSave();
-  }, 300);
-}
-
-function activateButtonField(name) {
-  const now = Date.now();
-  if (
-    state.lastButtonActivation &&
-    state.lastButtonActivation.name === name &&
-    now < state.lastButtonActivation.until
-  ) {
-    return;
-  }
-
-  if (formSaveTimer) {
-    window.clearTimeout(formSaveTimer);
-    formSaveTimer = null;
-  }
-
-  state.lastButtonActivation = {
-    name,
-    until: now + 1000
-  };
-  state.saveInFlight = true;
-  state.saveQueued = false;
-
-  vscode.postMessage({
-    type: 'buttonActivated',
-    payload: {
-      name,
-      annotations: {
-        version: state.sessionAnnotations.version,
-        strokes: state.sessionAnnotations.strokes,
-        highlights: state.sessionAnnotations.highlights,
-        comments: state.sessionAnnotations.comments,
-        updatedAt: new Date().toISOString()
-      },
-      formFields: state.formFields
-    }
-  });
-}
-
-function slugify(value) {
-  return value.replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
 }
 
 function applySessionAnnotations(annotations, options = {}) {
@@ -1683,7 +541,7 @@ function applySessionAnnotations(annotations, options = {}) {
   drawingLayer?.load(nextAnnotations.strokes);
   renderHighlights(nextAnnotations.highlights);
   renderFormFields();
-  renderComments(nextAnnotations.comments);
+  renderComments();
   renderSelectionAction();
 
   if (!options.skipHistory) {
@@ -1714,10 +572,10 @@ function requestSave() {
         strokes: state.sessionAnnotations.strokes,
         highlights: state.sessionAnnotations.highlights,
         comments: state.sessionAnnotations.comments,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       },
-      formFields: state.formFields
-    }
+      formFields: state.formFields,
+    },
   });
 }
 
@@ -1725,7 +583,7 @@ async function rerenderPages() {
   const requestId = ++zoomRenderRequestId;
   const workspaceSize = {
     width: workspaceEl.clientWidth,
-    height: workspaceEl.clientHeight
+    height: workspaceEl.clientHeight,
   };
   const { pages, outline, resolvedScale, fragment } = await renderPdf(
     state.pdfBase64,
@@ -1742,7 +600,7 @@ async function rerenderPages() {
   pagesEl.replaceChildren(fragment);
   state.pageEntries = pages;
   state.externalOutline = outline;
-  syncOutlineState();
+  syncOutlineState(state);
   state.zoom = resolvedScale;
   state.renderedZoom = resolvedScale;
   state.totalPages = state.pageEntries.length;
@@ -1756,26 +614,26 @@ async function rerenderPages() {
     onChange(allStrokes) {
       applySessionAnnotations({
         ...state.sessionAnnotations,
-        strokes: allStrokes
+        strokes: allStrokes,
       });
     },
     onErase(_erasedStroke, remainingStrokes) {
       applySessionAnnotations({
         ...state.sessionAnnotations,
-        strokes: remainingStrokes
+        strokes: remainingStrokes,
       });
     },
     onEraseHighlight(_erasedHighlight, remainingHighlights) {
       applySessionAnnotations({
         ...state.sessionAnnotations,
-        highlights: remainingHighlights
+        highlights: remainingHighlights,
       });
-    }
+    },
   });
   drawingLayer.load(state.sessionAnnotations.strokes);
   renderHighlights(state.sessionAnnotations.highlights);
   renderFormFields();
-  renderComments(state.sessionAnnotations.comments);
+  renderComments();
   updateSearchResults({ preserveActive: true });
   renderSidebar();
   updatePageIndicator();
@@ -1785,457 +643,9 @@ async function rerenderPages() {
   restoreZoomViewport();
 }
 
-function updatePageIndicator() {
-  pageInputEl.value = String(state.currentPage);
-  pageInputEl.max = String(Math.max(state.totalPages, 1));
-  pageTotalEl.textContent = `/ ${Math.max(state.totalPages, 1)}`;
-}
-
-function updateZoomPresetIndicator() {
-  if (state.zoomMode !== 'custom') {
-    zoomPresetEl.value = state.zoomMode;
-    return;
-  }
-
-  const matchingOption = Array.from(zoomPresetEl.options).find(
-    (option) => !Number.isNaN(Number(option.value)) && Math.abs(Number(option.value) - state.zoom) < 0.01
-  );
-
-  zoomPresetEl.value = matchingOption ? matchingOption.value : 'custom';
-}
-
-function updateCurrentPageFromScroll() {
-  if (!state.pageEntries.length || state.pageJumpInProgress) {
-    return;
-  }
-
-  const viewportTop = workspaceEl.scrollTop;
-  let closestPage = state.pageEntries[0].pageNumber;
-  let closestDistance = Number.POSITIVE_INFINITY;
-  let closestLeft = Number.POSITIVE_INFINITY;
-
-  for (const pageEntry of state.pageEntries) {
-    const distance = Math.abs(getPageScrollTop(pageEntry) - viewportTop);
-    const left = pageEntry.pageShell.offsetLeft;
-
-    if (distance < closestDistance || (Math.abs(distance - closestDistance) <= 1 && left < closestLeft)) {
-      closestDistance = distance;
-      closestLeft = left;
-      closestPage = pageEntry.pageNumber;
-    }
-  }
-
-  state.currentPage = closestPage;
-  if (state.activeOutlineKey) {
-    const activeOutlineItem = outlineListEl.querySelector(
-      `.sidebar-item[data-outline-key="${CSS.escape(state.activeOutlineKey)}"]`
-    );
-    if (!activeOutlineItem || activeOutlineItem.dataset.page !== String(closestPage)) {
-      state.activeOutlineKey = null;
-    }
-  }
-  updatePageIndicator();
-  updateSidebarActiveState();
-}
-
-function setActiveColor(color) {
-  state.color = color;
-  strokeColorEl.value = color;
-  colorChipEl.style.backgroundColor = color;
-  colorButtonEl.style.setProperty('--active-color', color);
-
-  for (const swatch of colorPaletteEl.querySelectorAll('.color-swatch')) {
-    swatch.classList.toggle('is-active', swatch.dataset.color === color);
-  }
-}
-
-function getCommentOverlayPlacement({
-  pageEntry,
-  overlayWidth,
-  overlayHeight,
-  gap,
-  anchorRight,
-  anchorTop,
-  markerAnchorX
-}) {
-  const padding = 8;
-  const top = Math.min(pageEntry.height - overlayHeight, Math.max(2, anchorTop - 2));
-  const visibleLeft = workspaceEl.scrollLeft - pageEntry.pageShell.offsetLeft;
-  const visibleRight = visibleLeft + workspaceEl.clientWidth;
-  const canFitToVisibleRight = (left) => left + overlayWidth + padding <= visibleRight;
-  const canFitToVisibleLeft = (left) => left >= visibleLeft + padding;
-  const isMostlyRightOfAnchor = (left) => left + overlayWidth * 0.5 >= anchorRight;
-  const isMostlyLeftOfAnchor = (left) => left + overlayWidth * 0.5 <= anchorRight;
-  const preferredRightLeft = pageEntry.width + gap;
-  const shiftedRightLeft = Math.min(preferredRightLeft, visibleRight - overlayWidth - padding);
-  const preferredLeftLeft = anchorRight - overlayWidth - gap;
-  const shiftedLeftLeft = Math.max(padding, Math.max(visibleLeft + padding, preferredLeftLeft));
-  const preferLeftOutside = state.pageLayout === 'double' && pageEntry.pageNumber % 2 === 1;
-
-  let left;
-  if (preferLeftOutside) {
-    const outsideLeft = -overlayWidth - gap;
-    if (canFitToVisibleLeft(outsideLeft)) {
-      left = outsideLeft;
-    } else if (canFitToVisibleLeft(shiftedLeftLeft) && isMostlyLeftOfAnchor(shiftedLeftLeft)) {
-      left = shiftedLeftLeft;
-    } else if (canFitToVisibleRight(shiftedRightLeft)) {
-      left = shiftedRightLeft;
-    } else {
-      left = Math.max(padding, Math.min(preferredLeftLeft, pageEntry.width - overlayWidth - padding));
-    }
-  } else {
-    if (canFitToVisibleRight(preferredRightLeft)) {
-      left = preferredRightLeft;
-    } else if (canFitToVisibleRight(shiftedRightLeft) && isMostlyRightOfAnchor(shiftedRightLeft)) {
-      left = shiftedRightLeft;
-    } else if (canFitToVisibleLeft(shiftedLeftLeft)) {
-      left = shiftedLeftLeft;
-    } else {
-      left = Math.max(padding, Math.min(preferredLeftLeft, pageEntry.width - overlayWidth - padding));
-    }
-  }
-
-  const overlayMidX = left + overlayWidth / 2;
-  const connectorLeft = Math.min(markerAnchorX, overlayMidX);
-  const connectorWidth = Math.max(8, Math.abs(overlayMidX - markerAnchorX));
-
-  return {
-    left,
-    top,
-    connectorLeft,
-    connectorWidth
-  };
-}
-
-function setColorPopoverOpen(nextOpen) {
-  const shouldOpen = Boolean(nextOpen);
-  state.colorPopoverOwner = shouldOpen ? 'color' : null;
-  colorPopoverEl.hidden = !shouldOpen;
-  colorButtonEl.classList.toggle('is-active', shouldOpen);
-
-  if (!shouldOpen) {
-    colorPopoverEl.style.removeProperty('--popover-left');
-    return;
-  }
-
-  const toolbarRect = toolbarEl.getBoundingClientRect();
-  const buttonRect = colorButtonEl?.getBoundingClientRect();
-  if (!buttonRect) {
-    colorPopoverEl.style.setProperty('--popover-left', '0px');
-    return;
-  }
-
-  const left = buttonRect.left - toolbarRect.left + buttonRect.width / 2;
-  colorPopoverEl.style.setProperty('--popover-left', `${left}px`);
-}
-
-function collapseCommentsForModeChange(nextMode) {
-  if (nextMode === 'comment') {
-    return;
-  }
-
-  const hadExpandedComments = state.openCommentId !== null || state.openMarkupNoteId !== null || state.showAllComments;
-  state.openCommentId = null;
-  state.openMarkupNoteId = null;
-  state.showAllComments = false;
-  updateCommentViewsToggleState();
-
-  if (state.commentComposer) {
-    if (state.commentComposer.text.trim()) {
-      submitCommentComposer();
-    } else {
-      cancelCommentComposer();
-    }
-    return;
-  }
-
-  if (hadExpandedComments) {
-    renderComments(state.sessionAnnotations.comments);
-  }
-}
-
-function jumpToPage(pageNumber, outlineKey = null, topRatio = null) {
-  const targetPage = state.pageEntries.find((entry) => entry.pageNumber === pageNumber);
-  if (!targetPage) {
-    return;
-  }
-
-  state.pageJumpInProgress = true;
-  state.currentPage = pageNumber;
-  state.activeOutlineKey = outlineKey;
-  const expandedOutline = expandOutlinePathForPage(state.outline, pageNumber);
-  updatePageIndicator();
-  if (expandedOutline) {
-    renderSidebar({ reveal: true });
-  } else {
-    updateSidebarActiveState({ reveal: true });
-  }
-  if (typeof topRatio === 'number') {
-    workspaceEl.scrollTo({
-      top: getPageScrollTop(targetPage) + Math.max(0, Math.min(1, topRatio)) * Math.max(targetPage.height - 48, 0),
-      left: workspaceEl.scrollLeft,
-      behavior: 'auto'
-    });
-  } else {
-    targetPage.pageShell.scrollIntoView({
-      behavior: 'auto',
-      block: 'start',
-      inline: 'nearest'
-    });
-  }
-
-  window.setTimeout(() => {
-    state.pageJumpInProgress = false;
-    updateCurrentPageFromScroll();
-  }, 150);
-}
-
-function setMode(mode) {
-  collapseCommentsForModeChange(mode);
-  state.mode = mode;
-  setColorPopoverOpen(false);
-  updateInteractionMode();
-}
-
-function setPageLayout(nextLayout) {
-  if (state.pageLayout === nextLayout) {
-    return;
-  }
-
-  state.pageLayout = nextLayout;
-  updateLayoutState();
-
-  if (!state.pdfBase64) {
-    return;
-  }
-
-  state.zoomContext = createZoomContext();
-  scheduleZoomRerender();
-}
-
-function updateInteractionMode() {
-  for (const button of modeToggleEl.querySelectorAll('.mode-button')) {
-    button.classList.toggle('is-active', button.dataset.mode === state.mode);
-  }
-  commentButtonEl.classList.toggle('is-active', state.mode === 'comment');
-
-  for (const pageEntry of state.pageEntries) {
-    const textInteractionEnabled = state.mode === 'select' || state.mode === 'highlight' || state.mode === 'comment';
-    const formInteractionEnabled = state.mode === 'select';
-    pageEntry.drawingCanvas.style.pointerEvents = textInteractionEnabled ? 'none' : 'auto';
-    pageEntry.drawingCanvas.style.cursor =
-      state.mode === 'erase' ? 'not-allowed' : textInteractionEnabled ? 'text' : 'crosshair';
-    pageEntry.textLayer.style.userSelect = textInteractionEnabled ? 'text' : 'none';
-    pageEntry.textLayer.style.pointerEvents = textInteractionEnabled ? 'auto' : 'none';
-    pageEntry.formLayer.classList.toggle('is-disabled', !formInteractionEnabled);
-    for (const control of pageEntry.formLayer.querySelectorAll('.pdf-form-control')) {
-      control.disabled =
-        control.dataset.readOnly === 'true' || control.dataset.enabled === 'false' || !formInteractionEnabled;
-    }
-  }
-}
-
-function updateHistoryState() {
-  undoButtonEl.disabled = state.historyIndex <= 0;
-  redoButtonEl.disabled = state.historyIndex >= state.history.length - 1;
-}
-
-function updateCommentViewsToggleState() {
-  commentViewsToggleEl.classList.toggle('is-active', state.showAllComments);
-  commentViewsToggleEl.setAttribute('aria-pressed', String(state.showAllComments));
-  const label = state.showAllComments ? 'Collapse all comments' : 'Show all comments';
-  commentViewsToggleEl.setAttribute('aria-label', label);
-  commentViewsToggleEl.setAttribute('title', label);
-}
-
-function updateLayoutState() {
-  const isDouble = state.pageLayout === 'double';
-  pagesEl.classList.toggle('is-double', isDouble);
-  layoutToggleEl.classList.toggle('is-active', isDouble);
-  layoutToggleEl.setAttribute('aria-pressed', String(isDouble));
-  layoutToggleEl.innerHTML = isDouble ? icons.layoutSingle : icons.layoutDouble;
-  const nextLabel = isDouble ? 'Switch to single-page view' : 'Switch to two-page view';
-  layoutToggleEl.setAttribute('aria-label', nextLabel);
-  layoutToggleEl.setAttribute('title', nextLabel);
-}
-
-function setMenuOpen(nextOpen) {
-  state.menuOpen = nextOpen;
-  menuPanelEl.hidden = !nextOpen;
-  menuButtonEl.classList.toggle('is-active', nextOpen);
-}
-
-function findPageEntryFromNode(node) {
-  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
-  const textLayer = element?.closest('.text-layer, .textLayer');
-  if (!textLayer) {
-    return null;
-  }
-
-  return state.pageEntries.find((pageEntry) => pageEntry.textLayer === textLayer) ?? null;
-}
-
-function addHighlightFromSelection(force = false, kind = 'highlight') {
-  if (!force && state.mode !== 'highlight') {
-    return;
-  }
-
-  const snapshot = state.selectionSnapshot;
-  if (!snapshot) {
-    return;
-  }
-
-  applySessionAnnotations({
-    ...state.sessionAnnotations,
-    highlights: state.sessionAnnotations.highlights.concat({
-      id: crypto.randomUUID(),
-      kind,
-      page: snapshot.page,
-      color: state.color,
-      viewportWidth: snapshot.viewportWidth,
-      viewportHeight: snapshot.viewportHeight,
-      rects: structuredClone(snapshot.rects)
-    })
-  });
-
-  window.getSelection()?.removeAllRanges();
-  state.selectionSnapshot = null;
-  state.selectionAction = null;
-  renderSelectionAction();
-}
-
-function snapshotSelection() {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-    state.selectionSnapshot = null;
-    state.selectionAction = null;
-    renderSelectionAction();
-    return;
-  }
-
-  const range = selection.getRangeAt(0);
-  const pageEntry = findPageEntryFromNode(range.commonAncestorContainer);
-  if (!pageEntry) {
-    state.selectionSnapshot = null;
-    state.selectionAction = null;
-    renderSelectionAction();
-    return;
-  }
-
-  const pageRect = pageEntry.textLayer.getBoundingClientRect();
-  if (!pageRect.width || !pageRect.height) {
-    state.selectionSnapshot = null;
-    state.selectionAction = null;
-    renderSelectionAction();
-    return;
-  }
-
-  const scaleX = pageEntry.width / pageRect.width;
-  const scaleY = pageEntry.height / pageRect.height;
-  const rects = Array.from(range.getClientRects())
-    .filter((rect) => rect.width > 0 && rect.height > 0)
-    .map((rect) => ({
-      x: (rect.left - pageRect.left) * scaleX,
-      y: (rect.top - pageRect.top) * scaleY,
-      width: rect.width * scaleX,
-      height: rect.height * scaleY
-    }));
-
-  if (!rects.length) {
-    state.selectionSnapshot = null;
-    state.selectionAction = null;
-    renderSelectionAction();
-    return;
-  }
-
-  state.selectionSnapshot = {
-    page: pageEntry.pageNumber,
-    viewportWidth: pageEntry.width,
-    viewportHeight: pageEntry.height,
-    rects,
-    text: normalizeSelectedText(selection.toString())
-  };
-  const firstRect = rects[0];
-  const lastRect = rects[rects.length - 1];
-  state.selectionAction = {
-    left: Math.min(
-      pageEntry.pageShell.offsetLeft + lastRect.x + lastRect.width,
-      workspaceEl.scrollLeft + workspaceEl.clientWidth - 88
-    ),
-    top: Math.min(
-      workspaceEl.scrollTop + workspaceEl.clientHeight - 26,
-      pageEntry.pageShell.offsetTop + firstRect.y + firstRect.height + 16
-    )
-  };
-  renderSelectionAction();
-}
-
-function addCommentFromSelection() {
-  if (!state.selectionSnapshot) {
-    return;
-  }
-
-  state.commentComposer = {
-    id: null,
-    sourceHighlightId: null,
-    author: state.commentAuthor,
-    modifiedAt: new Date().toISOString(),
-    page: state.selectionSnapshot.page,
-    viewportWidth: state.selectionSnapshot.viewportWidth,
-    viewportHeight: state.selectionSnapshot.viewportHeight,
-    rects: structuredClone(state.selectionSnapshot.rects),
-    color: state.color,
-    text: ''
-  };
-  state.selectionAction = null;
-  renderComments(state.sessionAnnotations.comments);
-  renderSelectionAction();
-}
-
-function addBookmarkFromSelection() {
-  if (!state.selectionSnapshot) {
-    return;
-  }
-
-  const snapshot = state.selectionSnapshot;
-  const firstRect = snapshot.rects[0];
-  const rawTitle = (snapshot.text || '').trim().replace(/\s+/g, ' ');
-  const title = rawTitle
-    ? (rawTitle.length > 64 ? `${rawTitle.slice(0, 61)}...` : rawTitle)
-    : `Bookmark p. ${snapshot.page}`;
-
-  const bookmark = {
-    id: `studio-bookmark-${crypto.randomUUID()}`,
-    title,
-    pageNumber: snapshot.page,
-    topRatio: Math.max(0, Math.min(1, (firstRect?.y ?? 0) / Math.max(snapshot.viewportHeight, 1))),
-    depth: 0,
-    actionable: true,
-    isExternal: false,
-    items: []
-  };
-
-  const nextBookmarks = cloneBookmarks(state.bookmarks);
-  const insertAt = nextBookmarks.findIndex((candidate) => compareBookmarks(bookmark, candidate) < 0);
-  if (insertAt === -1) {
-    nextBookmarks.push(bookmark);
-  } else {
-    nextBookmarks.splice(insertAt, 0, bookmark);
-  }
-
-  applyBookmarks(nextBookmarks, { reveal: true });
-  setSidebarTab('outline');
-  setSidebarOpen(true);
-  window.getSelection()?.removeAllRanges();
-  state.selectionSnapshot = null;
-  state.selectionAction = null;
-  renderSelectionAction();
-}
-
 function cancelCommentComposer() {
   state.commentComposer = null;
-  renderComments(state.sessionAnnotations.comments);
+  renderComments();
 }
 
 function deleteCommentFromComposer() {
@@ -2245,7 +655,9 @@ function deleteCommentFromComposer() {
     state.openMarkupNoteId = null;
     applySessionAnnotations({
       ...state.sessionAnnotations,
-      highlights: state.sessionAnnotations.highlights.filter((highlight) => highlight.id !== sourceHighlightId)
+      highlights: state.sessionAnnotations.highlights.filter(
+        (highlight) => highlight.id !== sourceHighlightId
+      ),
     });
     return;
   }
@@ -2260,7 +672,9 @@ function deleteCommentFromComposer() {
   state.openCommentId = null;
   applySessionAnnotations({
     ...state.sessionAnnotations,
-    comments: state.sessionAnnotations.comments.filter((comment) => comment.id !== commentId)
+    comments: state.sessionAnnotations.comments.filter(
+      (comment) => comment.id !== commentId
+    ),
   });
 }
 
@@ -2286,11 +700,11 @@ function submitCommentComposer() {
                 text: composerState.text.trim(),
                 author: composerState.author || state.commentAuthor,
                 modifiedAt: nextModifiedAt,
-                subject: highlight.attachedNote?.subject
-              }
+                subject: highlight.attachedNote?.subject,
+              },
             }
           : highlight
-      )
+      ),
     });
     window.getSelection()?.removeAllRanges();
     state.selectionSnapshot = null;
@@ -2309,18 +723,20 @@ function submitCommentComposer() {
     viewportHeight: composerState.viewportHeight,
     rects: structuredClone(composerState.rects),
     color: composerState.color,
-    text: composerState.text.trim()
+    text: composerState.text.trim(),
   };
 
   state.openCommentId = nextComment.id;
   state.commentComposer = null;
   applySessionAnnotations({
     ...state.sessionAnnotations,
-    comments: state.sessionAnnotations.comments.some((comment) => comment.id === nextComment.id)
+    comments: state.sessionAnnotations.comments.some(
+      (comment) => comment.id === nextComment.id
+    )
       ? state.sessionAnnotations.comments.map((comment) =>
           comment.id === nextComment.id ? nextComment : comment
         )
-      : state.sessionAnnotations.comments.concat(nextComment)
+      : state.sessionAnnotations.comments.concat(nextComment),
   });
   window.getSelection()?.removeAllRanges();
   state.selectionSnapshot = null;
@@ -2347,7 +763,10 @@ function redo() {
 }
 
 async function adjustZoom(delta) {
-  const nextZoom = Math.max(0.5, Math.min(10, Number((state.zoom + delta).toFixed(2))));
+  const nextZoom = Math.max(
+    0.5,
+    Math.min(10, Number((state.zoom + delta).toFixed(2)))
+  );
   if (nextZoom === state.zoom || !state.pdfBase64) {
     return;
   }
@@ -2402,7 +821,7 @@ function createZoomContext(anchorClientX, anchorClientY) {
     anchorX,
     anchorY,
     offsetX: clientX - workspaceRect.left,
-    offsetY: clientY - workspaceRect.top
+    offsetY: clientY - workspaceRect.top,
   };
 }
 
@@ -2450,7 +869,10 @@ function applyWheelZoom(event) {
   event.preventDefault();
 
   const zoomFactor = Math.exp(-event.deltaY * 0.0025);
-  const nextZoom = Math.max(0.5, Math.min(10, Number((state.zoom * zoomFactor).toFixed(2))));
+  const nextZoom = Math.max(
+    0.5,
+    Math.min(10, Number((state.zoom * zoomFactor).toFixed(2)))
+  );
   if (nextZoom === state.zoom) {
     return;
   }
@@ -2480,7 +902,10 @@ function applyGestureZoomChange(event) {
 
   event.preventDefault();
   state.zoomMode = 'custom';
-  state.zoom = Math.max(0.5, Math.min(10, Number((state.gestureZoomBase * event.scale).toFixed(2))));
+  state.zoom = Math.max(
+    0.5,
+    Math.min(10, Number((state.gestureZoomBase * event.scale).toFixed(2)))
+  );
   applyVisualZoomPreview();
   scheduleZoomRerender();
 }
@@ -2494,7 +919,12 @@ function applyZoomPreset(value) {
     return;
   }
 
-  if (value === 'automatic' || value === 'actual-size' || value === 'page-fit' || value === 'page-width') {
+  if (
+    value === 'automatic' ||
+    value === 'actual-size' ||
+    value === 'page-fit' ||
+    value === 'page-width'
+  ) {
     state.zoomMode = value;
     state.zoomContext = createZoomContext();
     scheduleZoomRerender();
@@ -2518,27 +948,15 @@ function getZoomConfig() {
     return {
       mode: 'custom',
       scale: state.zoom,
-      layout: state.pageLayout
+      layout: state.pageLayout,
     };
   }
 
   return {
     mode: state.zoomMode,
     scale: state.zoom,
-    layout: state.pageLayout
+    layout: state.pageLayout,
   };
-}
-
-function getPageScrollTop(pageEntry) {
-  return pageEntry.pageShell.offsetTop;
-}
-
-function isTextEditingTarget(target) {
-  if (!(target instanceof Element)) {
-    return false;
-  }
-
-  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
 zoomInEl.addEventListener('click', () => {
@@ -2610,7 +1028,10 @@ function applyTypedPageJump() {
     return;
   }
 
-  const clampedPage = Math.min(Math.max(Math.round(requestedPage), 1), Math.max(state.totalPages, 1));
+  const clampedPage = Math.min(
+    Math.max(Math.round(requestedPage), 1),
+    Math.max(state.totalPages, 1)
+  );
   jumpToPage(clampedPage);
 }
 
@@ -2656,7 +1077,7 @@ commentViewsToggleEl.addEventListener('click', () => {
     state.openMarkupNoteId = null;
   }
   updateCommentViewsToggleState();
-  renderComments(state.sessionAnnotations.comments);
+  renderComments();
 });
 
 colorButtonEl.addEventListener('click', () => {
@@ -2690,11 +1111,13 @@ window.addEventListener('click', (event) => {
     renderSelectionAction();
   }
 
-  if (!event.target.closest('.comment-marker, .comment-popup, .comment-composer')) {
+  if (
+    !event.target.closest('.comment-marker, .comment-popup, .comment-composer')
+  ) {
     if (!state.showAllComments) {
       state.openCommentId = null;
       state.openMarkupNoteId = null;
-      renderComments(state.sessionAnnotations.comments);
+      renderComments();
     }
   }
 
@@ -2706,7 +1129,10 @@ window.addEventListener('click', (event) => {
     return;
   }
 
-  if (menuPanelEl.contains(event.target) || menuButtonEl.contains(event.target)) {
+  if (
+    menuPanelEl.contains(event.target) ||
+    menuButtonEl.contains(event.target)
+  ) {
     return;
   }
 
@@ -2729,18 +1155,30 @@ document.addEventListener('selectionchange', () => {
 });
 
 window.addEventListener('keydown', (event) => {
-  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'f'
+  ) {
     event.preventDefault();
     setSearchOpen(true);
     return;
   }
 
-  if (event.key === 'Escape' && state.searchOpen && !isTextEditingTarget(event.target)) {
+  if (
+    event.key === 'Escape' &&
+    state.searchOpen &&
+    !isTextEditingTarget(event.target)
+  ) {
     setSearchOpen(false);
     return;
   }
 
-  if (isTextEditingTarget(event.target) || (!event.ctrlKey && !event.metaKey) || event.altKey) {
+  if (
+    isTextEditingTarget(event.target) ||
+    (!event.ctrlKey && !event.metaKey) ||
+    event.altKey
+  ) {
     return;
   }
 
@@ -2762,13 +1200,29 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, { passive: true });
+workspaceEl.addEventListener('scroll', updateCurrentPageFromScroll, {
+  passive: true,
+});
 workspaceEl.addEventListener('wheel', applyWheelZoom, { passive: false });
-window.addEventListener('resize', scheduleResponsiveRerender, { passive: true });
-window.addEventListener('wheel', applyWheelZoom, { passive: false, capture: true });
-window.addEventListener('gesturestart', applyGestureZoomStart, { passive: false, capture: true });
-window.addEventListener('gesturechange', applyGestureZoomChange, { passive: false, capture: true });
-window.addEventListener('gestureend', applyGestureZoomEnd, { passive: true, capture: true });
+window.addEventListener('resize', scheduleResponsiveRerender, {
+  passive: true,
+});
+window.addEventListener('wheel', applyWheelZoom, {
+  passive: false,
+  capture: true,
+});
+window.addEventListener('gesturestart', applyGestureZoomStart, {
+  passive: false,
+  capture: true,
+});
+window.addEventListener('gesturechange', applyGestureZoomChange, {
+  passive: false,
+  capture: true,
+});
+window.addEventListener('gestureend', applyGestureZoomEnd, {
+  passive: true,
+  capture: true,
+});
 
 window.addEventListener('message', async (event) => {
   const message = event.data;
@@ -2777,13 +1231,16 @@ window.addEventListener('message', async (event) => {
     state.fileName = message.payload.fileName;
     state.commentAuthor = message.payload.commentAuthor || 'PDF Studio';
     state.pdfBase64 = message.payload.pdfBase64;
-    state.outlinePdfBase64 = message.payload.outlinePdfBase64 || message.payload.pdfBase64;
+    state.outlinePdfBase64 =
+      message.payload.outlinePdfBase64 || message.payload.pdfBase64;
     state.sessionAnnotations = structuredClone(message.payload.annotations);
     state.formFields = structuredClone(message.payload.formFields);
     state.bookmarks = [];
     state.externalOutline = [];
-    syncOutlineState();
-    state.history = [createHistoryEntry(state.sessionAnnotations, state.bookmarks)];
+    syncOutlineState(state);
+    state.history = [
+      createHistoryEntry(state.sessionAnnotations, state.bookmarks),
+    ];
     state.historyIndex = 0;
     state.openCommentId = null;
     state.openMarkupNoteId = null;
@@ -2814,7 +1271,8 @@ window.addEventListener('message', async (event) => {
       messageBoxEl.hidden = true;
     } catch (error) {
       messageBoxEl.hidden = false;
-      messageBoxEl.textContent = error instanceof Error ? error.message : 'Failed to load PDF.';
+      messageBoxEl.textContent =
+        error instanceof Error ? error.message : 'Failed to load PDF.';
     }
   }
 
@@ -2834,9 +1292,13 @@ window.addEventListener('message', async (event) => {
   if (message.type === 'commentAuthorUpdated') {
     state.commentAuthor = message.payload.commentAuthor || 'PDF Studio';
     if (state.commentComposer && !state.commentComposer.author) {
-      renderComments(state.sessionAnnotations.comments);
-    } else if (state.openCommentId !== null || state.openMarkupNoteId !== null || state.showAllComments) {
-      renderComments(state.sessionAnnotations.comments);
+      renderComments();
+    } else if (
+      state.openCommentId !== null ||
+      state.openMarkupNoteId !== null ||
+      state.showAllComments
+    ) {
+      renderComments();
     }
   }
 

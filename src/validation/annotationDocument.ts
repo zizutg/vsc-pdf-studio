@@ -5,7 +5,7 @@ import {
   type AnnotationHighlight,
   type AnnotationPoint,
   type AnnotationRect,
-  type AnnotationStroke
+  type AnnotationStroke,
 } from '../../models/annotation';
 import { PDF_STUDIO_LIMITS } from '../constants';
 
@@ -28,7 +28,7 @@ export function sanitizeAnnotationDocument(input: unknown): AnnotationDocument {
         : new Date(0).toISOString(),
     strokes,
     highlights,
-    comments
+    comments,
   };
 }
 
@@ -50,7 +50,10 @@ function sanitizeStroke(value: unknown): AnnotationStroke | null {
     return null;
   }
 
-  const points = sanitizePoints(value.points, PDF_STUDIO_LIMITS.maxPointsPerStroke);
+  const points = sanitizePoints(
+    value.points,
+    PDF_STUDIO_LIMITS.maxPointsPerStroke
+  );
   if (points.length < 2) {
     return null;
   }
@@ -62,7 +65,7 @@ function sanitizeStroke(value: unknown): AnnotationStroke | null {
     page: sanitizePage(value.page),
     viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
     viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
-    points
+    points,
   };
 }
 
@@ -76,7 +79,9 @@ function sanitizeHighlights(value: unknown): AnnotationHighlight[] {
 
   return value
     .map((highlight) => sanitizeHighlight(highlight))
-    .filter((highlight): highlight is AnnotationHighlight => highlight !== null);
+    .filter(
+      (highlight): highlight is AnnotationHighlight => highlight !== null
+    );
 }
 
 function sanitizeHighlight(value: unknown): AnnotationHighlight | null {
@@ -84,20 +89,28 @@ function sanitizeHighlight(value: unknown): AnnotationHighlight | null {
     return null;
   }
 
-  const rects = sanitizeRects(value.rects, PDF_STUDIO_LIMITS.maxRectsPerHighlight);
+  const rects = sanitizeRects(
+    value.rects,
+    PDF_STUDIO_LIMITS.maxRectsPerHighlight
+  );
   if (!rects.length) {
     return null;
   }
 
   return {
     id: sanitizeId(value.id),
-    kind: value.kind === 'underline' ? 'underline' : value.kind === 'strikeout' ? 'strikeout' : 'highlight',
+    kind:
+      value.kind === 'underline'
+        ? 'underline'
+        : value.kind === 'strikeout'
+          ? 'strikeout'
+          : 'highlight',
     color: sanitizeColor(value.color),
     page: sanitizePage(value.page),
     viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
     viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
     rects,
-    attachedNote: sanitizeMarkupNote(value.attachedNote)
+    attachedNote: sanitizeMarkupNote(value.attachedNote),
   };
 }
 
@@ -119,7 +132,10 @@ function sanitizeComment(value: unknown): AnnotationComment | null {
     return null;
   }
 
-  const rects = sanitizeRects(value.rects, PDF_STUDIO_LIMITS.maxRectsPerComment);
+  const rects = sanitizeRects(
+    value.rects,
+    PDF_STUDIO_LIMITS.maxRectsPerComment
+  );
   const text =
     typeof value.text === 'string'
       ? value.text.trim().slice(0, PDF_STUDIO_LIMITS.maxCommentLength)
@@ -131,18 +147,26 @@ function sanitizeComment(value: unknown): AnnotationComment | null {
 
   return {
     id: sanitizeId(value.id),
-    author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
-    modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
+    author:
+      typeof value.author === 'string'
+        ? value.author.trim().slice(0, 120)
+        : undefined,
+    modifiedAt:
+      typeof value.modifiedAt === 'string' && value.modifiedAt.trim()
+        ? value.modifiedAt.trim()
+        : undefined,
     color: sanitizeColor(value.color),
     page: sanitizePage(value.page),
     viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
     viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
     rects,
-    text
+    text,
   };
 }
 
-function sanitizeMarkupNote(value: unknown): AnnotationHighlight['attachedNote'] {
+function sanitizeMarkupNote(
+  value: unknown
+): AnnotationHighlight['attachedNote'] {
   if (!isObject(value)) {
     return undefined;
   }
@@ -157,9 +181,18 @@ function sanitizeMarkupNote(value: unknown): AnnotationHighlight['attachedNote']
 
   return {
     text,
-    author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
-    modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
-    subject: typeof value.subject === 'string' ? value.subject.trim().slice(0, 120) : undefined
+    author:
+      typeof value.author === 'string'
+        ? value.author.trim().slice(0, 120)
+        : undefined,
+    modifiedAt:
+      typeof value.modifiedAt === 'string' && value.modifiedAt.trim()
+        ? value.modifiedAt.trim()
+        : undefined,
+    subject:
+      typeof value.subject === 'string'
+        ? value.subject.trim().slice(0, 120)
+        : undefined,
   };
 }
 
@@ -224,11 +257,15 @@ function sanitizeFiniteNumber(value: unknown): number | null {
 }
 
 function sanitizePositiveNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
 }
 
 function sanitizePage(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 1;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? value
+    : 1;
 }
 
 function sanitizeColor(value: unknown): string {

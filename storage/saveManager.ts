@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 import * as https from 'node:https';
-import * as vscode from 'vscode';
+import type { Uri } from 'vscode';
 import {
   decodePDFRawStream,
   PDFArray,
@@ -18,7 +18,7 @@ import {
   PDFRawStream,
   PDFString,
   PDFTextField,
-  rgb
+  rgb,
 } from 'pdf-lib';
 import {
   emptyAnnotationDocument,
@@ -26,20 +26,15 @@ import {
   type AnnotationDocument,
   type AnnotationHighlight,
   type AnnotationPoint,
-  type AnnotationRect
+  type AnnotationRect,
 } from '../models/annotation';
 import {
   type PdfButtonAction,
   type PdfButtonFormField,
   emptyFormFields,
-  type PdfCheckboxFormField,
-  type PdfDropdownFormField,
   type PdfFormField,
   type PdfFormFieldWidget,
-  type PdfOptionListFormField,
-  type PdfRadioFormField,
   type PdfTextFieldSemantic,
-  type PdfTextFormField
 } from '../models/formField';
 import { PDF_STUDIO_BASE_KEY, PDF_STUDIO_DATA_KEY } from '../src/constants';
 import { sanitizeAnnotationDocument } from '../src/validation/annotationDocument';
@@ -56,48 +51,68 @@ export class SaveManager {
   private readonly sessionAnnotations = new Map<string, AnnotationDocument>();
   private readonly sessionFormFields = new Map<string, PdfFormField[]>();
   private readonly sessionResetFormFields = new Map<string, PdfFormField[]>();
-  private readonly sessionFingerprints = new Map<string, SessionFileFingerprint>();
+  private readonly sessionFingerprints = new Map<
+    string,
+    SessionFileFingerprint
+  >();
 
-  public async getPdfBytes(pdfUri: vscode.Uri): Promise<Uint8Array> {
+  public async getPdfBytes(pdfUri: Uri): Promise<Uint8Array> {
     await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    return new Uint8Array(this.sessionBasePdf.get(cacheKey) ?? new Uint8Array());
+    return new Uint8Array(
+      this.sessionBasePdf.get(cacheKey) ?? new Uint8Array()
+    );
   }
 
-  public async getLivePdfBytes(pdfUri: vscode.Uri): Promise<Uint8Array> {
+  public async getLivePdfBytes(pdfUri: Uri): Promise<Uint8Array> {
     await this.ensureSessionStateFresh(pdfUri);
     return new Uint8Array(await fs.readFile(pdfUri.fsPath));
   }
 
-  public async getAnnotations(pdfUri: vscode.Uri): Promise<AnnotationDocument> {
+  public async getAnnotations(pdfUri: Uri): Promise<AnnotationDocument> {
     await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    return structuredClone(this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument());
+    return structuredClone(
+      this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument()
+    );
   }
 
-  public async getFormFields(pdfUri: vscode.Uri): Promise<PdfFormField[]> {
+  public async getFormFields(pdfUri: Uri): Promise<PdfFormField[]> {
     await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    return structuredClone(this.sessionFormFields.get(cacheKey) ?? emptyFormFields());
+    return structuredClone(
+      this.sessionFormFields.get(cacheKey) ?? emptyFormFields()
+    );
   }
 
-  public async getResetFormFields(pdfUri: vscode.Uri): Promise<PdfFormField[]> {
+  public async getResetFormFields(pdfUri: Uri): Promise<PdfFormField[]> {
     await this.ensureSessionStateFresh(pdfUri);
     const cacheKey = pdfUri.toString();
-    return structuredClone(this.sessionResetFormFields.get(cacheKey) ?? emptyFormFields());
+    return structuredClone(
+      this.sessionResetFormFields.get(cacheKey) ?? emptyFormFields()
+    );
   }
 
-  public async getButtonAction(pdfUri: vscode.Uri, name: string): Promise<PdfButtonAction | null> {
+  public async getButtonAction(
+    pdfUri: Uri,
+    name: string
+  ): Promise<PdfButtonAction | null> {
     const formFields = await this.getFormFields(pdfUri);
     const field = formFields.find(
-      (candidate): candidate is PdfButtonFormField => candidate.type === 'button' && candidate.name === name
+      (candidate): candidate is PdfButtonFormField =>
+        candidate.type === 'button' && candidate.name === name
     );
     return field?.action ? structuredClone(field.action) : null;
   }
 
-  public async submitForm(formFields: PdfFormField[], action: PdfButtonAction): Promise<void> {
+  public async submitForm(
+    formFields: PdfFormField[],
+    action: PdfButtonAction
+  ): Promise<void> {
     if (action.type !== 'submit' || !action.url) {
-      throw new Error('This PDF button does not expose a supported submit target.');
+      throw new Error(
+        'This PDF button does not expose a supported submit target.'
+      );
     }
 
     const fieldData = buildSubmitFormPayload(formFields);
@@ -112,17 +127,22 @@ export class SaveManager {
       return;
     }
 
-    await executeHttpRequest(targetUrl, 'POST', new URLSearchParams(fieldData).toString());
+    await executeHttpRequest(
+      targetUrl,
+      'POST',
+      new URLSearchParams(fieldData).toString()
+    );
   }
 
   public async saveDocument(
-    pdfUri: vscode.Uri,
+    pdfUri: Uri,
     annotations: AnnotationDocument,
     formFields: PdfFormField[]
   ): Promise<void> {
     const cacheKey = pdfUri.toString();
     let basePdfBytes = this.sessionBasePdf.get(cacheKey);
-    const previousAnnotations = this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument();
+    const previousAnnotations =
+      this.sessionAnnotations.get(cacheKey) ?? emptyAnnotationDocument();
 
     if (!basePdfBytes) {
       basePdfBytes = await this.getPdfBytes(pdfUri);
@@ -135,7 +155,7 @@ export class SaveManager {
       pdfDocument,
       new Set([
         ...previousAnnotations.highlights.map((highlight) => highlight.id),
-        ...annotations.highlights.map((highlight) => highlight.id)
+        ...annotations.highlights.map((highlight) => highlight.id),
       ])
     );
 
@@ -156,7 +176,7 @@ export class SaveManager {
           end: toPdfPoint(end, scaleX, scaleY, page.getHeight()),
           thickness: lineWidth,
           color,
-          opacity: 1
+          opacity: 1,
         });
       }
     }
@@ -188,7 +208,7 @@ export class SaveManager {
             height: thickness,
             color,
             opacity: 1,
-            borderWidth: 0
+            borderWidth: 0,
           });
           continue;
         }
@@ -197,12 +217,15 @@ export class SaveManager {
           const thickness = Math.max(1, Math.min(renderedHeight * 0.16, 3));
           page.drawRectangle({
             x: rect.x * scaleX,
-            y: page.getHeight() - (rect.y + rect.height * 0.5) * scaleY - thickness * 0.5,
+            y:
+              page.getHeight() -
+              (rect.y + rect.height * 0.5) * scaleY -
+              thickness * 0.5,
             width: rect.width * scaleX,
             height: thickness,
             color,
             opacity: 1,
-            borderWidth: 0
+            borderWidth: 0,
           });
           continue;
         }
@@ -214,7 +237,7 @@ export class SaveManager {
           height: rect.height * scaleY,
           color,
           opacity: 0.28,
-          borderWidth: 0
+          borderWidth: 0,
         });
       }
     }
@@ -230,11 +253,14 @@ export class SaveManager {
 
     const storedAnnotations: AnnotationDocument = {
       ...annotations,
-      comments: []
+      comments: [],
     };
-    pdfDocument.catalog.set(PDFName.of(PDF_STUDIO_DATA_KEY), PDFHexString.fromText(JSON.stringify(storedAnnotations)));
+    pdfDocument.catalog.set(
+      PDFName.of(PDF_STUDIO_DATA_KEY),
+      PDFHexString.fromText(JSON.stringify(storedAnnotations))
+    );
     const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
-      Type: 'EmbeddedFile'
+      Type: 'EmbeddedFile',
     });
     const baseStreamRef = pdfDocument.context.register(baseStream);
     pdfDocument.catalog.set(PDFName.of(PDF_STUDIO_BASE_KEY), baseStreamRef);
@@ -243,10 +269,13 @@ export class SaveManager {
     await fs.writeFile(pdfUri.fsPath, output);
     this.sessionAnnotations.set(cacheKey, structuredClone(annotations));
     this.sessionFormFields.set(cacheKey, structuredClone(formFields));
-    this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
+    this.sessionFingerprints.set(
+      cacheKey,
+      await getFileFingerprint(pdfUri.fsPath)
+    );
   }
 
-  public disposeSession(pdfUri: vscode.Uri): void {
+  public disposeSession(pdfUri: Uri): void {
     const cacheKey = pdfUri.toString();
     this.sessionBasePdf.delete(cacheKey);
     this.sessionAnnotations.delete(cacheKey);
@@ -255,7 +284,7 @@ export class SaveManager {
     this.sessionFingerprints.delete(cacheKey);
   }
 
-  private async loadSessionState(pdfUri: vscode.Uri): Promise<void> {
+  private async loadSessionState(pdfUri: Uri): Promise<void> {
     const cacheKey = pdfUri.toString();
     const pdfBytes = new Uint8Array(await fs.readFile(pdfUri.fsPath));
     const pdfDocument = await PDFDocument.load(pdfBytes);
@@ -264,16 +293,24 @@ export class SaveManager {
     const nativeHighlights = extractNativeHighlights(pdfDocument);
     const formFields = extractFormFields(pdfDocument);
     this.sessionFormFields.set(cacheKey, formFields);
-    this.sessionResetFormFields.set(cacheKey, extractResetFormFields(pdfDocument, formFields));
+    this.sessionResetFormFields.set(
+      cacheKey,
+      extractResetFormFields(pdfDocument, formFields)
+    );
 
-    const rawAnnotationData = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_DATA_KEY));
+    const rawAnnotationData = pdfDocument.catalog.lookup(
+      PDFName.of(PDF_STUDIO_DATA_KEY)
+    );
     const annotationJson =
-      rawAnnotationData instanceof PDFHexString || rawAnnotationData instanceof PDFString
+      rawAnnotationData instanceof PDFHexString ||
+      rawAnnotationData instanceof PDFString
         ? rawAnnotationData.decodeText()
         : null;
     const sanitizedAnnotations = parseStoredAnnotations(annotationJson);
 
-    const embeddedBase = pdfDocument.catalog.lookup(PDFName.of(PDF_STUDIO_BASE_KEY));
+    const embeddedBase = pdfDocument.catalog.lookup(
+      PDFName.of(PDF_STUDIO_BASE_KEY)
+    );
     const basePdfBytes = await resolveSessionBasePdfBytes(
       pdfBytes,
       pdfDocument,
@@ -287,22 +324,31 @@ export class SaveManager {
       this.sessionAnnotations.set(cacheKey, {
         ...emptyAnnotationDocument(),
         highlights: nativeHighlights,
-        comments: nativeComments
+        comments: nativeComments,
       });
-      this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
+      this.sessionFingerprints.set(
+        cacheKey,
+        await getFileFingerprint(pdfUri.fsPath)
+      );
       return;
     }
 
     this.sessionAnnotations.set(cacheKey, {
       ...sanitizedAnnotations,
-      highlights: mergeHighlights(sanitizedAnnotations.highlights, nativeHighlights),
-      comments: mergeComments(sanitizedAnnotations.comments, nativeComments)
+      highlights: mergeHighlights(
+        sanitizedAnnotations.highlights,
+        nativeHighlights
+      ),
+      comments: mergeComments(sanitizedAnnotations.comments, nativeComments),
     });
 
-    this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
+    this.sessionFingerprints.set(
+      cacheKey,
+      await getFileFingerprint(pdfUri.fsPath)
+    );
   }
 
-  private async ensureSessionStateFresh(pdfUri: vscode.Uri): Promise<void> {
+  private async ensureSessionStateFresh(pdfUri: Uri): Promise<void> {
     const cacheKey = pdfUri.toString();
     const cachedFingerprint = this.sessionFingerprints.get(cacheKey);
     const hasSession =
@@ -327,15 +373,19 @@ export class SaveManager {
   }
 }
 
-async function getFileFingerprint(fsPath: string): Promise<SessionFileFingerprint> {
+async function getFileFingerprint(
+  fsPath: string
+): Promise<SessionFileFingerprint> {
   const stats = await fs.stat(fsPath);
   return {
     size: stats.size,
-    mtimeMs: stats.mtimeMs
+    mtimeMs: stats.mtimeMs,
   };
 }
 
-function parseStoredAnnotations(annotationJson: string | null): AnnotationDocument {
+function parseStoredAnnotations(
+  annotationJson: string | null
+): AnnotationDocument {
   if (!annotationJson) {
     return emptyAnnotationDocument();
   }
@@ -345,14 +395,6 @@ function parseStoredAnnotations(annotationJson: string | null): AnnotationDocume
   } catch {
     return emptyAnnotationDocument();
   }
-}
-
-function hasRenderableStudioMarkup(annotations: AnnotationDocument): boolean {
-  return (
-    annotations.strokes.length > 0 ||
-    annotations.highlights.length > 0 ||
-    annotations.comments.length > 0
-  );
 }
 
 async function resolveSessionBasePdfBytes(
@@ -378,7 +420,12 @@ async function resolveSessionBasePdfBytes(
     const pagesWithStudioMarkup = collectPagesWithStudioMarkup(annotations);
 
     if (livePageCount > basePageCount) {
-      return materializeExternalPageAdditionsOnBase(embeddedBaseBytes, livePdfBytes, basePageCount, livePageCount);
+      return materializeExternalPageAdditionsOnBase(
+        embeddedBaseBytes,
+        livePdfBytes,
+        basePageCount,
+        livePageCount
+      );
     }
 
     const replacementPageIndexes = collectReplaceableChangedPageIndexes(
@@ -389,13 +436,20 @@ async function resolveSessionBasePdfBytes(
 
     const baseFormFields = extractFormFields(basePdfDocument);
     const baseFieldNames = new Set(baseFormFields.map((field) => field.name));
-    const missingFormFields = liveFormFields.filter((field) => !baseFieldNames.has(field.name));
+    const missingFormFields = liveFormFields.filter(
+      (field) => !baseFieldNames.has(field.name)
+    );
 
     const missingButtonFields = missingFormFields.filter(
       (field): field is PdfButtonFormField => field.type === 'button'
     );
-    const missingNonButtonFields = missingFormFields.filter((field) => field.type !== 'button');
-    const buttonPageIndexes = collectReplaceableFormFieldPageIndexes(missingButtonFields, pagesWithStudioMarkup);
+    const missingNonButtonFields = missingFormFields.filter(
+      (field) => field.type !== 'button'
+    );
+    const buttonPageIndexes = collectReplaceableFormFieldPageIndexes(
+      missingButtonFields,
+      pagesWithStudioMarkup
+    );
 
     for (const pageIndex of buttonPageIndexes) {
       if (!replacementPageIndexes.includes(pageIndex)) {
@@ -407,11 +461,18 @@ async function resolveSessionBasePdfBytes(
 
     if (replacementPageIndexes.length) {
       replacementPageIndexes.sort((left, right) => left - right);
-      resolvedBaseBytes = await materializeChangedPagesOnBase(embeddedBaseBytes, livePdfBytes, replacementPageIndexes);
+      resolvedBaseBytes = await materializeChangedPagesOnBase(
+        embeddedBaseBytes,
+        livePdfBytes,
+        replacementPageIndexes
+      );
     }
 
     if (missingNonButtonFields.length) {
-      return materializeFormFieldsOnBase(resolvedBaseBytes, missingNonButtonFields);
+      return materializeFormFieldsOnBase(
+        resolvedBaseBytes,
+        missingNonButtonFields
+      );
     }
 
     if (replacementPageIndexes.length) {
@@ -424,15 +485,6 @@ async function resolveSessionBasePdfBytes(
   return embeddedBaseBytes;
 }
 
-function countNativeFormFields(pdfDocument: PDFDocument): number {
-  const form = pdfDocument.getForm();
-  if (form.hasXFA()) {
-    return 0;
-  }
-
-  return form.getFields().length;
-}
-
 async function materializeFormFieldsOnBase(
   basePdfBytes: Uint8Array,
   liveFormFields: PdfFormField[]
@@ -443,7 +495,9 @@ async function materializeFormFieldsOnBase(
     form.deleteXFA();
   }
 
-  const existingNames = new Set(form.getFields().map((field) => field.getName()));
+  const existingNames = new Set(
+    form.getFields().map((field) => field.getName())
+  );
 
   for (const fieldState of liveFormFields) {
     if (existingNames.has(fieldState.name)) {
@@ -496,8 +550,13 @@ async function materializeFormFieldsOnBase(
         if (!page) {
           return;
         }
-        const option = widget.option ?? fieldState.options[index] ?? `Option ${index + 1}`;
-        field.addOptionToPage(option, page, buildFieldAppearanceOptions(page, widget));
+        const option =
+          widget.option ?? fieldState.options[index] ?? `Option ${index + 1}`;
+        field.addOptionToPage(
+          option,
+          page,
+          buildFieldAppearanceOptions(page, widget)
+        );
       });
       if (fieldState.value) {
         field.select(fieldState.value);
@@ -523,7 +582,9 @@ async function materializeFormFieldsOnBase(
         field.addToPage(page, buildFieldAppearanceOptions(page, widget));
       }
       if (fieldState.value.length) {
-        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+        field.select(
+          fieldState.multiSelect ? fieldState.value : fieldState.value[0]
+        );
       }
       continue;
     }
@@ -543,7 +604,9 @@ async function materializeFormFieldsOnBase(
         field.addToPage(page, buildFieldAppearanceOptions(page, widget));
       }
       if (fieldState.value.length) {
-        field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+        field.select(
+          fieldState.multiSelect ? fieldState.value : fieldState.value[0]
+        );
       }
       continue;
     }
@@ -556,7 +619,11 @@ async function materializeFormFieldsOnBase(
         if (!page) {
           continue;
         }
-        field.addToPage(fieldState.label, page, buildFieldAppearanceOptions(page, widget));
+        field.addToPage(
+          fieldState.label,
+          page,
+          buildFieldAppearanceOptions(page, widget)
+        );
       }
       applyButtonActionToField(pdfDocument, field, fieldState.action);
       continue;
@@ -585,7 +652,10 @@ async function materializeExternalPageAdditionsOnBase(
     return basePdfBytes;
   }
 
-  const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+  const copiedPages = await basePdfDocument.copyPages(
+    livePdfDocument,
+    pageIndexes
+  );
   for (const page of copiedPages) {
     basePdfDocument.addPage(page);
   }
@@ -600,7 +670,10 @@ async function materializeChangedPagesOnBase(
 ): Promise<Uint8Array> {
   const basePdfDocument = await PDFDocument.load(basePdfBytes);
   const livePdfDocument = await PDFDocument.load(livePdfBytes);
-  const copiedPages = await basePdfDocument.copyPages(livePdfDocument, pageIndexes);
+  const copiedPages = await basePdfDocument.copyPages(
+    livePdfDocument,
+    pageIndexes
+  );
 
   for (let index = copiedPages.length - 1; index >= 0; index -= 1) {
     const pageIndex = pageIndexes[index];
@@ -617,7 +690,10 @@ function collectReplaceableChangedPageIndexes(
   pagesWithStudioMarkup: Set<number>
 ): number[] {
   const changedPages: number[] = [];
-  const pageCount = Math.min(basePdfDocument.getPageCount(), livePdfDocument.getPageCount());
+  const pageCount = Math.min(
+    basePdfDocument.getPageCount(),
+    livePdfDocument.getPageCount()
+  );
 
   for (let index = 0; index < pageCount; index += 1) {
     if (pagesWithStudioMarkup.has(index + 1)) {
@@ -634,7 +710,9 @@ function collectReplaceableChangedPageIndexes(
   return changedPages;
 }
 
-function collectPagesWithStudioMarkup(annotations: AnnotationDocument): Set<number> {
+function collectPagesWithStudioMarkup(
+  annotations: AnnotationDocument
+): Set<number> {
   const pages = new Set<number>();
 
   for (const stroke of annotations.strokes) {
@@ -669,7 +747,9 @@ function collectReplaceableFormFieldPageIndexes(
   return Array.from(pageIndexes);
 }
 
-function buildPageSignature(page: PDFDocument['getPages'] extends () => Array<infer T> ? T : never): string {
+function buildPageSignature(
+  page: PDFDocument['getPages'] extends () => Array<infer T> ? T : never
+): string {
   const contents = page.node.Contents();
   const annots = page.node.Annots();
   const mediaBox = page.node.MediaBox();
@@ -679,7 +759,7 @@ function buildPageSignature(page: PDFDocument['getPages'] extends () => Array<in
     contents ? contents.toString() : 'no-contents',
     annots ? annots.toString() : 'no-annots',
     mediaBox ? mediaBox.toString() : 'no-mediabox',
-    rotate ? rotate.toString() : 'no-rotate'
+    rotate ? rotate.toString() : 'no-rotate',
   ].join('|');
 }
 
@@ -694,7 +774,7 @@ function buildFieldAppearanceOptions(
     height: widget.height,
     borderColor: rgb(0.45, 0.45, 0.45),
     backgroundColor: rgb(1, 1, 1),
-    textColor: rgb(0.1, 0.1, 0.1)
+    textColor: rgb(0.1, 0.1, 0.1),
   };
 }
 
@@ -711,7 +791,9 @@ function setReadOnly(field: unknown, readOnly: boolean): void {
   }
 }
 
-function toSegments(points: AnnotationPoint[]): Array<[AnnotationPoint, AnnotationPoint]> {
+function toSegments(
+  points: AnnotationPoint[]
+): Array<[AnnotationPoint, AnnotationPoint]> {
   const segments: Array<[AnnotationPoint, AnnotationPoint]> = [];
 
   for (let index = 1; index < points.length; index += 1) {
@@ -729,7 +811,7 @@ function toPdfPoint(
 ): { x: number; y: number } {
   return {
     x: point.x * scaleX,
-    y: pageHeight - point.y * scaleY
+    y: pageHeight - point.y * scaleY,
   };
 }
 
@@ -747,7 +829,10 @@ function toRgb(hex: string) {
   return rgb(red, green, blue);
 }
 
-function applyFormFieldValues(pdfDocument: PDFDocument, formFields: PdfFormField[]): void {
+function applyFormFieldValues(
+  pdfDocument: PDFDocument,
+  formFields: PdfFormField[]
+): void {
   if (!formFields.length) {
     return;
   }
@@ -790,7 +875,9 @@ function applyFormFieldValues(pdfDocument: PDFDocument, formFields: PdfFormField
       case 'dropdown':
         if (field instanceof PDFDropdown) {
           if (fieldState.value.length) {
-            field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+            field.select(
+              fieldState.multiSelect ? fieldState.value : fieldState.value[0]
+            );
           } else {
             field.clear();
           }
@@ -799,7 +886,9 @@ function applyFormFieldValues(pdfDocument: PDFDocument, formFields: PdfFormField
       case 'optionList':
         if (field instanceof PDFOptionList) {
           if (fieldState.value.length) {
-            field.select(fieldState.multiSelect ? fieldState.value : fieldState.value[0]);
+            field.select(
+              fieldState.multiSelect ? fieldState.value : fieldState.value[0]
+            );
           } else {
             field.clear();
           }
@@ -813,7 +902,10 @@ function applyFormFieldValues(pdfDocument: PDFDocument, formFields: PdfFormField
   form.updateFieldAppearances();
 }
 
-function extractResetFormFields(pdfDocument: PDFDocument, currentFormFields: PdfFormField[]): PdfFormField[] {
+function extractResetFormFields(
+  pdfDocument: PDFDocument,
+  currentFormFields: PdfFormField[]
+): PdfFormField[] {
   const form = pdfDocument.getForm();
   if (form.hasXFA()) {
     return structuredClone(currentFormFields);
@@ -829,23 +921,31 @@ function extractResetFormFields(pdfDocument: PDFDocument, currentFormFields: Pdf
       case 'text':
         return {
           ...fieldState,
-          value: decodeDefaultTextValue(field.acroField.dict.lookup(PDFName.of('DV')))
+          value: decodeDefaultTextValue(
+            field.acroField.dict.lookup(PDFName.of('DV'))
+          ),
         };
       case 'checkbox':
         return {
           ...fieldState,
-          checked: decodeDefaultCheckboxValue(field.acroField.dict.lookup(PDFName.of('DV')))
+          checked: decodeDefaultCheckboxValue(
+            field.acroField.dict.lookup(PDFName.of('DV'))
+          ),
         };
       case 'radio':
         return {
           ...fieldState,
-          value: decodeDefaultChoiceValue(field.acroField.dict.lookup(PDFName.of('DV')))
+          value: decodeDefaultChoiceValue(
+            field.acroField.dict.lookup(PDFName.of('DV'))
+          ),
         };
       case 'dropdown':
       case 'optionList':
         return {
           ...fieldState,
-          value: decodeDefaultChoiceValues(field.acroField.dict.lookup(PDFName.of('DV')))
+          value: decodeDefaultChoiceValues(
+            field.acroField.dict.lookup(PDFName.of('DV'))
+          ),
         };
       default:
         return fieldState;
@@ -904,7 +1004,9 @@ function decodeDefaultChoiceValues(value: unknown): string[] {
   return single ? [single] : [];
 }
 
-function buildSubmitFormPayload(formFields: PdfFormField[]): Array<[string, string]> {
+function buildSubmitFormPayload(
+  formFields: PdfFormField[]
+): Array<[string, string]> {
   const payload: Array<[string, string]> = [];
 
   for (const field of formFields) {
@@ -959,11 +1061,14 @@ function applyButtonActionToField(
   widget.dict.set(PDFName.of('A'), actionDict);
 }
 
-function createButtonActionDict(pdfDocument: PDFDocument, action: PdfButtonAction): PDFDict | null {
+function createButtonActionDict(
+  pdfDocument: PDFDocument,
+  action: PdfButtonAction
+): PDFDict | null {
   switch (action.type) {
     case 'reset':
       return pdfDocument.context.obj({
-        S: PDFName.of('ResetForm')
+        S: PDFName.of('ResetForm'),
       });
     case 'submit':
       if (!action.url) {
@@ -972,7 +1077,7 @@ function createButtonActionDict(pdfDocument: PDFDocument, action: PdfButtonActio
       return pdfDocument.context.obj({
         S: PDFName.of('SubmitForm'),
         F: PDFString.of(action.url),
-        Flags: PDFNumber.of(action.method === 'GET' ? 8 : 0)
+        Flags: PDFNumber.of(action.method === 'GET' ? 8 : 0),
       });
     case 'mailto':
     case 'uri':
@@ -981,7 +1086,7 @@ function createButtonActionDict(pdfDocument: PDFDocument, action: PdfButtonActio
       }
       return pdfDocument.context.obj({
         S: PDFName.of('URI'),
-        URI: PDFString.of(action.url)
+        URI: PDFString.of(action.url),
       });
     case 'unsupported':
     default:
@@ -989,7 +1094,11 @@ function createButtonActionDict(pdfDocument: PDFDocument, action: PdfButtonActio
   }
 }
 
-async function executeHttpRequest(targetUrl: URL, method: 'GET' | 'POST', body?: string): Promise<void> {
+async function executeHttpRequest(
+  targetUrl: URL,
+  method: 'GET' | 'POST',
+  body?: string
+): Promise<void> {
   const transport = targetUrl.protocol === 'https:' ? https : http;
 
   await new Promise<void>((resolve, reject) => {
@@ -1001,9 +1110,9 @@ async function executeHttpRequest(targetUrl: URL, method: 'GET' | 'POST', body?:
           method === 'POST'
             ? {
                 'content-type': 'application/x-www-form-urlencoded',
-                'content-length': Buffer.byteLength(body || '').toString()
+                'content-length': Buffer.byteLength(body || '').toString(),
               }
-            : undefined
+            : undefined,
       },
       (response) => {
         const statusCode = response.statusCode ?? 0;
@@ -1014,7 +1123,9 @@ async function executeHttpRequest(targetUrl: URL, method: 'GET' | 'POST', body?:
             return;
           }
 
-          reject(new Error(`SubmitForm request failed with status ${statusCode}.`));
+          reject(
+            new Error(`SubmitForm request failed with status ${statusCode}.`)
+          );
         });
       }
     );
@@ -1040,8 +1151,16 @@ function addNativeCommentAnnotation(
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
 
-  const x = clamp((anchorRect.x + anchorRect.width) * scaleX + 4, 8, pageWidth - iconSize - 8);
-  const yTop = clamp(pageHeight - anchorRect.y * scaleY + 2, iconSize + 8, pageHeight - 8);
+  const x = clamp(
+    (anchorRect.x + anchorRect.width) * scaleX + 4,
+    8,
+    pageWidth - iconSize - 8
+  );
+  const yTop = clamp(
+    pageHeight - anchorRect.y * scaleY + 2,
+    iconSize + 8,
+    pageHeight - 8
+  );
   const rect = [x, yTop - iconSize, x + iconSize, yTop];
 
   const annotation = pdfDocument.context.obj({
@@ -1052,10 +1171,12 @@ function addNativeCommentAnnotation(
     Name: PDFName.of('Comment'),
     NM: PDFHexString.fromText(comment.id),
     T: PDFHexString.fromText((comment.author || 'PDF Studio').trim()),
-    M: PDFString.of(toPdfDate(comment.modifiedAt ? new Date(comment.modifiedAt) : new Date())),
+    M: PDFString.of(
+      toPdfDate(comment.modifiedAt ? new Date(comment.modifiedAt) : new Date())
+    ),
     C: pdfDocument.context.obj([color.red, color.green, color.blue]),
     Open: false,
-    F: 4
+    F: 4,
   });
   annotation.set(
     PDF_STUDIO_COMMENT_KEY,
@@ -1067,7 +1188,7 @@ function addNativeCommentAnnotation(
         color: comment.color,
         viewportWidth: comment.viewportWidth,
         viewportHeight: comment.viewportHeight,
-        rects: comment.rects
+        rects: comment.rects,
       })
     )
   );
@@ -1107,12 +1228,21 @@ function addNativeMarkupAnnotation(
     maxY = Math.max(maxY, top);
   }
 
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(maxY)
+  ) {
     return;
   }
 
   const subtype =
-    highlight.kind === 'underline' ? 'Underline' : highlight.kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+    highlight.kind === 'underline'
+      ? 'Underline'
+      : highlight.kind === 'strikeout'
+        ? 'StrikeOut'
+        : 'Highlight';
   const annotation = pdfDocument.context.obj({
     Type: PDFName.of('Annot'),
     Subtype: PDFName.of(subtype),
@@ -1121,13 +1251,20 @@ function addNativeMarkupAnnotation(
     Contents: PDFHexString.fromText(attachedNote.text.trim()),
     NM: PDFHexString.fromText(highlight.id),
     T: PDFHexString.fromText((attachedNote.author || 'PDF Studio').trim()),
-    M: PDFString.of(toPdfDate(attachedNote.modifiedAt ? new Date(attachedNote.modifiedAt) : new Date())),
+    M: PDFString.of(
+      toPdfDate(
+        attachedNote.modifiedAt ? new Date(attachedNote.modifiedAt) : new Date()
+      )
+    ),
     C: pdfDocument.context.obj([color.red, color.green, color.blue]),
-    F: 4
+    F: 4,
   });
 
   if (attachedNote.subject?.trim()) {
-    annotation.set(PDFName.of('Subj'), PDFHexString.fromText(attachedNote.subject.trim()));
+    annotation.set(
+      PDFName.of('Subj'),
+      PDFHexString.fromText(attachedNote.subject.trim())
+    );
   }
 
   const annotationRef = pdfDocument.context.register(annotation);
@@ -1144,26 +1281,38 @@ function removeNativeMarkupAnnotation(
     return;
   }
 
-  const targetSubtype = kind === 'underline' ? 'Underline' : kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+  const targetSubtype =
+    kind === 'underline'
+      ? 'Underline'
+      : kind === 'strikeout'
+        ? 'StrikeOut'
+        : 'Highlight';
   for (let index = annots.size() - 1; index >= 0; index -= 1) {
     const annotation = annots.lookupMaybe(index, PDFDict);
     if (!annotation) {
       continue;
     }
 
-    const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
+    const subtype = annotation
+      .lookupMaybe(PDFName.of('Subtype'), PDFName)
+      ?.decodeText();
     if (subtype !== targetSubtype) {
       continue;
     }
 
-    const nm = decodePdfText(annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString));
+    const nm = decodePdfText(
+      annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString)
+    );
     if (nm === annotationId) {
       annots.remove(index);
     }
   }
 }
 
-function removeNativeMarkupAnnotations(pdfDocument: PDFDocument, annotationIds: Set<string>): void {
+function removeNativeMarkupAnnotations(
+  pdfDocument: PDFDocument,
+  annotationIds: Set<string>
+): void {
   if (!annotationIds.size) {
     return;
   }
@@ -1180,12 +1329,20 @@ function removeNativeMarkupAnnotations(pdfDocument: PDFDocument, annotationIds: 
         continue;
       }
 
-      const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
-      if (subtype !== 'Highlight' && subtype !== 'Underline' && subtype !== 'StrikeOut') {
+      const subtype = annotation
+        .lookupMaybe(PDFName.of('Subtype'), PDFName)
+        ?.decodeText();
+      if (
+        subtype !== 'Highlight' &&
+        subtype !== 'Underline' &&
+        subtype !== 'StrikeOut'
+      ) {
         continue;
       }
 
-      const nm = decodePdfText(annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString));
+      const nm = decodePdfText(
+        annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString)
+      );
       if (nm && annotationIds.has(nm)) {
         annots.remove(index);
       }
@@ -1220,12 +1377,16 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
         continue;
       }
 
-      const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
+      const subtype = annotation
+        .lookupMaybe(PDFName.of('Subtype'), PDFName)
+        ?.decodeText();
       let sourceAnnotation = annotation;
 
       if (subtype === 'Popup') {
         const parent = annotation.lookupMaybe(PDFName.of('Parent'), PDFDict);
-        const parentSubtype = parent?.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
+        const parentSubtype = parent
+          ?.lookupMaybe(PDFName.of('Subtype'), PDFName)
+          ?.decodeText();
         if (
           !parent ||
           (parentSubtype !== 'Text' && parentSubtype !== 'FreeText')
@@ -1243,22 +1404,35 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
       }
 
       const rect =
-        sourceAnnotation.lookupMaybe(PDFName.of('Rect'), PDFArray)?.asRectangle() ??
+        sourceAnnotation
+          .lookupMaybe(PDFName.of('Rect'), PDFArray)
+          ?.asRectangle() ??
         annotation.lookupMaybe(PDFName.of('Rect'), PDFArray)?.asRectangle();
       if (!rect) {
         continue;
       }
 
-      const nm = decodePdfText(sourceAnnotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString));
-      const author = decodePdfText(sourceAnnotation.lookupMaybe(PDFName.of('T'), PDFString, PDFHexString)).trim();
-      const modifiedAt = decodePdfDate(sourceAnnotation.lookupMaybe(PDFName.of('M'), PDFString, PDFHexString));
+      const nm = decodePdfText(
+        sourceAnnotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString)
+      );
+      const author = decodePdfText(
+        sourceAnnotation.lookupMaybe(PDFName.of('T'), PDFString, PDFHexString)
+      ).trim();
+      const modifiedAt = decodePdfDate(
+        sourceAnnotation.lookupMaybe(PDFName.of('M'), PDFString, PDFHexString)
+      );
       const colorArray =
-        sourceAnnotation.lookupMaybe(PDFName.of('C'), PDFArray) ?? annotation.lookupMaybe(PDFName.of('C'), PDFArray);
+        sourceAnnotation.lookupMaybe(PDFName.of('C'), PDFArray) ??
+        annotation.lookupMaybe(PDFName.of('C'), PDFArray);
       const color = colorArray ? colorArrayToHex(colorArray) : '#f97316';
       const pageWidth = page.getWidth();
       const pageHeight = page.getHeight();
       const studioData = decodeStudioCommentPayload(
-        sourceAnnotation.lookupMaybe(PDF_STUDIO_COMMENT_KEY, PDFString, PDFHexString)
+        sourceAnnotation.lookupMaybe(
+          PDF_STUDIO_COMMENT_KEY,
+          PDFString,
+          PDFHexString
+        )
       );
       const commentId =
         studioData?.id ||
@@ -1277,18 +1451,17 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
         page: pageIndex + 1,
         viewportWidth: studioData?.viewportWidth || pageWidth,
         viewportHeight: studioData?.viewportHeight || pageHeight,
-        rects:
-          studioData?.rects.length
-            ? studioData.rects
-            : [
-                {
-                  x: rect.x,
-                  y: pageHeight - rect.y - rect.height,
-                  width: rect.width,
-                  height: rect.height
-                }
-              ],
-        text: contents.trim()
+        rects: studioData?.rects.length
+          ? studioData.rects
+          : [
+              {
+                x: rect.x,
+                y: pageHeight - rect.y - rect.height,
+                width: rect.width,
+                height: rect.height,
+              },
+            ],
+        text: contents.trim(),
       });
     }
   });
@@ -1296,7 +1469,9 @@ function extractNativeComments(pdfDocument: PDFDocument): AnnotationComment[] {
   return comments;
 }
 
-function extractNativeHighlights(pdfDocument: PDFDocument): AnnotationHighlight[] {
+function extractNativeHighlights(
+  pdfDocument: PDFDocument
+): AnnotationHighlight[] {
   const highlights: AnnotationHighlight[] = [];
   const seenHighlightKeys = new Set<string>();
 
@@ -1312,8 +1487,14 @@ function extractNativeHighlights(pdfDocument: PDFDocument): AnnotationHighlight[
         continue;
       }
 
-      const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName)?.decodeText();
-      if (subtype !== 'Highlight' && subtype !== 'Underline' && subtype !== 'StrikeOut') {
+      const subtype = annotation
+        .lookupMaybe(PDFName.of('Subtype'), PDFName)
+        ?.decodeText();
+      if (
+        subtype !== 'Highlight' &&
+        subtype !== 'Underline' &&
+        subtype !== 'StrikeOut'
+      ) {
         continue;
       }
 
@@ -1326,13 +1507,21 @@ function extractNativeHighlights(pdfDocument: PDFDocument): AnnotationHighlight[
         continue;
       }
 
-      const nm = decodePdfText(annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString));
+      const nm = decodePdfText(
+        annotation.lookupMaybe(PDFName.of('NM'), PDFString, PDFHexString)
+      );
       const colorArray = annotation.lookupMaybe(PDFName.of('C'), PDFArray);
       const color = colorArray ? colorArrayToHex(colorArray) : '#facc15';
       const noteText = decodeNativeCommentText(annotation).trim();
-      const noteAuthor = decodePdfText(annotation.lookupMaybe(PDFName.of('T'), PDFString, PDFHexString)).trim();
-      const noteModifiedAt = decodePdfDate(annotation.lookupMaybe(PDFName.of('M'), PDFString, PDFHexString));
-      const noteSubject = decodePdfText(annotation.lookupMaybe(PDFName.of('Subj'), PDFString, PDFHexString)).trim();
+      const noteAuthor = decodePdfText(
+        annotation.lookupMaybe(PDFName.of('T'), PDFString, PDFHexString)
+      ).trim();
+      const noteModifiedAt = decodePdfDate(
+        annotation.lookupMaybe(PDFName.of('M'), PDFString, PDFHexString)
+      );
+      const noteSubject = decodePdfText(
+        annotation.lookupMaybe(PDFName.of('Subj'), PDFString, PDFHexString)
+      ).trim();
       const highlightId =
         nm ||
         `native-highlight-${pageIndex + 1}-${Math.round(rects[0].x)}-${Math.round(rects[0].y)}-${rects.length}`;
@@ -1343,7 +1532,12 @@ function extractNativeHighlights(pdfDocument: PDFDocument): AnnotationHighlight[
 
       highlights.push({
         id: highlightId,
-        kind: subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'highlight',
+        kind:
+          subtype === 'Underline'
+            ? 'underline'
+            : subtype === 'StrikeOut'
+              ? 'strikeout'
+              : 'highlight',
         color,
         page: pageIndex + 1,
         viewportWidth: pageWidth,
@@ -1354,9 +1548,9 @@ function extractNativeHighlights(pdfDocument: PDFDocument): AnnotationHighlight[
               text: noteText,
               author: noteAuthor || undefined,
               modifiedAt: noteModifiedAt || undefined,
-              subject: noteSubject || undefined
+              subject: noteSubject || undefined,
             }
-          : undefined
+          : undefined,
       });
     }
   });
@@ -1376,14 +1570,19 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
     pageRefToNumber.set(page.ref.toString(), index + 1);
     pageDimensions.set(index + 1, {
       width: page.getWidth(),
-      height: page.getHeight()
+      height: page.getHeight(),
     });
   });
 
   const fields: PdfFormField[] = [];
 
   for (const field of form.getFields()) {
-    const widgets = extractFieldWidgets(pdfDocument, field.acroField.getWidgets(), pageRefToNumber, pageDimensions);
+    const widgets = extractFieldWidgets(
+      pdfDocument,
+      field.acroField.getWidgets(),
+      pageRefToNumber,
+      pageDimensions
+    );
     if (!widgets.length) {
       continue;
     }
@@ -1397,7 +1596,7 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
         multiline: field.isMultiline(),
         maxLength: field.getMaxLength() ?? null,
         semantic: detectTextFieldSemantic(field.getName()),
-        widgets
+        widgets,
       });
       continue;
     }
@@ -1408,24 +1607,26 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
         type: 'checkbox',
         readOnly: field.isReadOnly(),
         checked: field.isChecked(),
-        widgets
+        widgets,
       });
       continue;
     }
 
     if (field instanceof PDFRadioGroup) {
       const options = field.getOptions();
-      const widgetsWithOptions: PdfFormFieldWidget[] = widgets.map((widget, index) => ({
-        ...widget,
-        option: options[index] ?? widget.option
-      }));
+      const widgetsWithOptions: PdfFormFieldWidget[] = widgets.map(
+        (widget, index) => ({
+          ...widget,
+          option: options[index] ?? widget.option,
+        })
+      );
       fields.push({
         name: field.getName(),
         type: 'radio',
         readOnly: field.isReadOnly(),
         value: field.getSelected() ?? null,
         options,
-        widgets: widgetsWithOptions
+        widgets: widgetsWithOptions,
       });
       continue;
     }
@@ -1439,7 +1640,7 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
         options: field.getOptions(),
         editable: field.isEditable(),
         multiSelect: field.isMultiselect(),
-        widgets
+        widgets,
       });
       continue;
     }
@@ -1452,7 +1653,7 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
         value: field.getSelected(),
         options: field.getOptions(),
         multiSelect: field.isMultiselect(),
-        widgets
+        widgets,
       });
       continue;
     }
@@ -1464,7 +1665,7 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
         readOnly: field.isReadOnly(),
         label: extractButtonLabel(field, widgets),
         action: extractButtonAction(field),
-        widgets
+        widgets,
       });
     }
   }
@@ -1472,17 +1673,25 @@ function extractFormFields(pdfDocument: PDFDocument): PdfFormField[] {
   return fields;
 }
 
-function extractButtonLabel(field: PDFButton, widgets: PdfFormFieldWidget[]): string {
+function extractButtonLabel(
+  field: PDFButton,
+  widgets: PdfFormFieldWidget[]
+): string {
   const caption = field.acroField
     .getWidgets()
-    .map((widget) => widget.getAppearanceCharacteristics()?.getCaptions().normal?.trim())
+    .map((widget) =>
+      widget.getAppearanceCharacteristics()?.getCaptions().normal?.trim()
+    )
     .find((value): value is string => Boolean(value));
 
   if (caption) {
     return caption;
   }
 
-  return field.getName().split('.').pop() || `Button ${widgets[0]?.page ?? ''}`.trim();
+  return (
+    field.getName().split('.').pop() ||
+    `Button ${widgets[0]?.page ?? ''}`.trim()
+  );
 }
 
 function extractButtonAction(field: PDFButton): PdfButtonAction | null {
@@ -1490,12 +1699,17 @@ function extractButtonAction(field: PDFButton): PdfButtonAction | null {
   const candidates: Array<{ action: PdfButtonAction; priority: number }> = [];
 
   for (const widget of widgets) {
-    const action = extractActionDescriptor(widget.dict.lookupMaybe(PDFName.of('A'), PDFDict));
+    const action = extractActionDescriptor(
+      widget.dict.lookupMaybe(PDFName.of('A'), PDFDict)
+    );
     if (action) {
       candidates.push({ action, priority: 100 });
     }
 
-    const additionalActions = widget.dict.lookupMaybe(PDFName.of('AA'), PDFDict);
+    const additionalActions = widget.dict.lookupMaybe(
+      PDFName.of('AA'),
+      PDFDict
+    );
     if (additionalActions) {
       for (const [key, priority] of [
         ['U', 95],
@@ -1507,9 +1721,11 @@ function extractButtonAction(field: PDFButton): PdfButtonAction | null {
         ['Fo', 20],
         ['Bl', 20],
         ['PV', 15],
-        ['PI', 15]
+        ['PI', 15],
       ] as const) {
-        const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(PDFName.of(key), PDFDict));
+        const additionalDescriptor = extractActionDescriptor(
+          additionalActions.lookupMaybe(PDFName.of(key), PDFDict)
+        );
         if (additionalDescriptor) {
           candidates.push({ action: additionalDescriptor, priority });
         }
@@ -1517,12 +1733,17 @@ function extractButtonAction(field: PDFButton): PdfButtonAction | null {
     }
   }
 
-  const directAction = extractActionDescriptor(field.acroField.dict.lookupMaybe(PDFName.of('A'), PDFDict));
+  const directAction = extractActionDescriptor(
+    field.acroField.dict.lookupMaybe(PDFName.of('A'), PDFDict)
+  );
   if (directAction) {
     candidates.push({ action: directAction, priority: 85 });
   }
 
-  const additionalActions = field.acroField.dict.lookupMaybe(PDFName.of('AA'), PDFDict);
+  const additionalActions = field.acroField.dict.lookupMaybe(
+    PDFName.of('AA'),
+    PDFDict
+  );
   if (additionalActions) {
     for (const [key, priority] of [
       ['U', 80],
@@ -1534,9 +1755,11 @@ function extractButtonAction(field: PDFButton): PdfButtonAction | null {
       ['Fo', 10],
       ['Bl', 10],
       ['PV', 5],
-      ['PI', 5]
+      ['PI', 5],
     ] as const) {
-      const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(PDFName.of(key), PDFDict));
+      const additionalDescriptor = extractActionDescriptor(
+        additionalActions.lookupMaybe(PDFName.of(key), PDFDict)
+      );
       if (additionalDescriptor) {
         candidates.push({ action: additionalDescriptor, priority });
       }
@@ -1547,11 +1770,16 @@ function extractButtonAction(field: PDFButton): PdfButtonAction | null {
     return null;
   }
 
-  candidates.sort((left, right) => buttonActionScore(right) - buttonActionScore(left));
+  candidates.sort(
+    (left, right) => buttonActionScore(right) - buttonActionScore(left)
+  );
   return candidates[0]?.action ?? null;
 }
 
-function buttonActionScore(candidate: { action: PdfButtonAction; priority: number }): number {
+function buttonActionScore(candidate: {
+  action: PdfButtonAction;
+  priority: number;
+}): number {
   return candidate.priority + buttonActionTypeWeight(candidate.action);
 }
 
@@ -1570,7 +1798,9 @@ function buttonActionTypeWeight(action: PdfButtonAction): number {
   }
 }
 
-function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction | null {
+function extractActionDescriptor(
+  action: PDFDict | undefined
+): PdfButtonAction | null {
   if (!action) {
     return null;
   }
@@ -1585,25 +1815,27 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
       type: 'reset',
       url: null,
       method: null,
-      reason: null
+      reason: null,
     };
   }
 
   if (subtype !== 'SubmitForm') {
     if (subtype === 'URI') {
-      const uri = decodePdfText(action.lookupMaybe(PDFName.of('URI'), PDFString, PDFHexString));
+      const uri = decodePdfText(
+        action.lookupMaybe(PDFName.of('URI'), PDFString, PDFHexString)
+      );
       return uri
         ? {
             type: uri.startsWith('mailto:') ? 'mailto' : 'uri',
             url: uri,
             method: null,
-            reason: null
+            reason: null,
           }
         : {
             type: 'unsupported',
             url: null,
             method: null,
-            reason: 'URI action has no usable target.'
+            reason: 'URI action has no usable target.',
           };
     }
 
@@ -1611,7 +1843,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
       type: 'unsupported',
       url: null,
       method: null,
-      reason: `Unsupported PDF button action: ${subtype}`
+      reason: `Unsupported PDF button action: ${subtype}`,
     };
   }
 
@@ -1622,7 +1854,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
       type: 'unsupported',
       url: null,
       method: null,
-      reason: 'Submit button has no usable target URL.'
+      reason: 'Submit button has no usable target URL.',
     };
   }
 
@@ -1631,7 +1863,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
       type: 'mailto',
       url,
       method: null,
-      reason: null
+      reason: null,
     };
   }
 
@@ -1640,7 +1872,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
       type: 'submit',
       url,
       method: extractSubmitMethod(action),
-      reason: null
+      reason: null,
     };
   }
 
@@ -1648,7 +1880,7 @@ function extractActionDescriptor(action: PDFDict | undefined): PdfButtonAction |
     type: 'unsupported',
     url,
     method: null,
-    reason: `Unsupported submit target: ${url}`
+    reason: `Unsupported submit target: ${url}`,
   };
 }
 
@@ -1701,7 +1933,11 @@ function extractFieldWidgets(
   const normalizedWidgets: PdfFormFieldWidget[] = [];
 
   widgets.forEach((widget, index) => {
-    const pageNumber = findWidgetPageNumber(pdfDocument, widget, pageRefToNumber);
+    const pageNumber = findWidgetPageNumber(
+      pdfDocument,
+      widget,
+      pageRefToNumber
+    );
     if (!pageNumber) {
       return;
     }
@@ -1723,7 +1959,7 @@ function extractFieldWidgets(
       y: pageSize.height - rect.y - rect.height,
       width: rect.width,
       height: rect.height,
-      option: widget.getOnValue()?.decodeText()
+      option: widget.getOnValue()?.decodeText(),
     });
   });
 
@@ -1760,22 +1996,37 @@ function findWidgetPageNumber(
 function detectTextFieldSemantic(name: string): PdfTextFieldSemantic {
   const normalized = name.toLowerCase();
 
-  if (normalized.includes(':signer:fullname') || normalized.includes('fullname') || normalized.includes('full_name')) {
+  if (
+    normalized.includes(':signer:fullname') ||
+    normalized.includes('fullname') ||
+    normalized.includes('full_name')
+  ) {
     return 'fullName';
   }
 
-  if (normalized.includes(':signer:email') || normalized.includes('email') || normalized.includes('e-mail')) {
+  if (
+    normalized.includes(':signer:email') ||
+    normalized.includes('email') ||
+    normalized.includes('e-mail')
+  ) {
     return 'email';
   }
 
-  if (normalized.includes(':signer:date') || normalized.endsWith('date') || normalized.includes('_date')) {
+  if (
+    normalized.includes(':signer:date') ||
+    normalized.endsWith('date') ||
+    normalized.includes('_date')
+  ) {
     return 'date';
   }
 
   return 'generic';
 }
 
-function mergeComments(studioComments: AnnotationComment[], nativeComments: AnnotationComment[]): AnnotationComment[] {
+function mergeComments(
+  studioComments: AnnotationComment[],
+  nativeComments: AnnotationComment[]
+): AnnotationComment[] {
   if (!nativeComments.length) {
     return studioComments;
   }
@@ -1791,7 +2042,7 @@ function mergeComments(studioComments: AnnotationComment[], nativeComments: Anno
     if (existing) {
       merged.set(nativeComment.id, {
         ...existing,
-        text: nativeComment.text
+        text: nativeComment.text,
       });
       continue;
     }
@@ -1827,7 +2078,10 @@ function decodePdfText(value?: PDFHexString | PDFString): string {
   return value ? value.decodeText() : '';
 }
 
-function extractHighlightRects(annotation: PDFDict, pageHeight: number): AnnotationRect[] | null {
+function extractHighlightRects(
+  annotation: PDFDict,
+  pageHeight: number
+): AnnotationRect[] | null {
   const quadPoints = annotation.lookupMaybe(PDFName.of('QuadPoints'), PDFArray);
   if (!quadPoints || quadPoints.size() < 8) {
     return null;
@@ -1838,7 +2092,9 @@ function extractHighlightRects(annotation: PDFDict, pageHeight: number): Annotat
     const points = [];
     for (let offset = 0; offset < 8; offset += 2) {
       const x = quadPoints.lookupMaybe(index + offset, PDFNumber)?.asNumber();
-      const y = quadPoints.lookupMaybe(index + offset + 1, PDFNumber)?.asNumber();
+      const y = quadPoints
+        .lookupMaybe(index + offset + 1, PDFNumber)
+        ?.asNumber();
       if (typeof x !== 'number' || typeof y !== 'number') {
         points.length = 0;
         break;
@@ -1858,15 +2114,20 @@ function extractHighlightRects(annotation: PDFDict, pageHeight: number): Annotat
       x: minX,
       y: pageHeight - maxY,
       width: maxX - minX,
-      height: maxY - minY
+      height: maxY - minY,
     });
   }
 
   return rects.length ? rects : null;
 }
 
-function extractRectFallback(annotation: PDFDict, pageHeight: number): AnnotationRect[] | null {
-  const rect = annotation.lookupMaybe(PDFName.of('Rect'), PDFArray)?.asRectangle();
+function extractRectFallback(
+  annotation: PDFDict,
+  pageHeight: number
+): AnnotationRect[] | null {
+  const rect = annotation
+    .lookupMaybe(PDFName.of('Rect'), PDFArray)
+    ?.asRectangle();
   if (!rect) {
     return null;
   }
@@ -1876,25 +2137,34 @@ function extractRectFallback(annotation: PDFDict, pageHeight: number): Annotatio
       x: rect.x,
       y: pageHeight - rect.y - rect.height,
       width: rect.width,
-      height: rect.height
-    }
+      height: rect.height,
+    },
   ];
 }
 
 function decodeNativeCommentText(annotation: PDFDict): string {
-  const contents = decodePdfText(annotation.lookupMaybe(PDFName.of('Contents'), PDFString, PDFHexString)).trim();
+  const contents = decodePdfText(
+    annotation.lookupMaybe(PDFName.of('Contents'), PDFString, PDFHexString)
+  ).trim();
   if (contents) {
     return contents;
   }
 
-  const richText = decodePdfText(annotation.lookupMaybe(PDFName.of('RC'), PDFString, PDFHexString)).trim();
+  const richText = decodePdfText(
+    annotation.lookupMaybe(PDFName.of('RC'), PDFString, PDFHexString)
+  ).trim();
   if (!richText) {
-    const subject = decodePdfText(annotation.lookupMaybe(PDFName.of('Subj'), PDFString, PDFHexString)).trim();
+    const subject = decodePdfText(
+      annotation.lookupMaybe(PDFName.of('Subj'), PDFString, PDFHexString)
+    ).trim();
     return subject;
   }
 
   // Adobe often stores comment text in simple rich-text markup.
-  return richText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return richText
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function decodePdfDate(value?: PDFHexString | PDFString): string | null {
@@ -1910,13 +2180,29 @@ function decodePdfDate(value?: PDFHexString | PDFString): string | null {
 
   const [, year, month, day, hour, minute, second] = match;
   return new Date(
-    Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    )
   ).toISOString();
 }
 
 function decodeStudioCommentPayload(
   value?: PDFHexString | PDFString
-): Pick<AnnotationComment, 'id' | 'author' | 'modifiedAt' | 'color' | 'viewportWidth' | 'viewportHeight' | 'rects'> | null {
+): Pick<
+  AnnotationComment,
+  | 'id'
+  | 'author'
+  | 'modifiedAt'
+  | 'color'
+  | 'viewportWidth'
+  | 'viewportHeight'
+  | 'rects'
+> | null {
   if (!value) {
     return null;
   }
@@ -1933,13 +2219,27 @@ function decodeStudioCommentPayload(
     }
 
     return {
-      id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : crypto.randomUUID(),
-      author: typeof parsed.author === 'string' && parsed.author.trim() ? parsed.author.trim().slice(0, 120) : undefined,
+      id:
+        typeof parsed.id === 'string' && parsed.id.trim()
+          ? parsed.id.trim()
+          : crypto.randomUUID(),
+      author:
+        typeof parsed.author === 'string' && parsed.author.trim()
+          ? parsed.author.trim().slice(0, 120)
+          : undefined,
       modifiedAt:
-        typeof parsed.modifiedAt === 'string' && parsed.modifiedAt.trim() ? parsed.modifiedAt.trim() : undefined,
-      color: typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color) ? parsed.color : '#f97316',
+        typeof parsed.modifiedAt === 'string' && parsed.modifiedAt.trim()
+          ? parsed.modifiedAt.trim()
+          : undefined,
+      color:
+        typeof parsed.color === 'string' &&
+        /^#[0-9a-fA-F]{6}$/.test(parsed.color)
+          ? parsed.color
+          : '#f97316',
       viewportWidth:
-        typeof parsed.viewportWidth === 'number' && Number.isFinite(parsed.viewportWidth) && parsed.viewportWidth > 0
+        typeof parsed.viewportWidth === 'number' &&
+        Number.isFinite(parsed.viewportWidth) &&
+        parsed.viewportWidth > 0
           ? parsed.viewportWidth
           : 1,
       viewportHeight:
@@ -1948,7 +2248,7 @@ function decodeStudioCommentPayload(
         parsed.viewportHeight > 0
           ? parsed.viewportHeight
           : 1,
-      rects
+      rects,
     };
   } catch {
     return null;
@@ -1959,10 +2259,14 @@ function colorArrayToHex(colorArray: PDFArray): string {
   const components = colorArray
     .asArray()
     .slice(0, 3)
-    .map((component) => ('asNumber' in component && typeof component.asNumber === 'function' ? component.asNumber() : 0));
+    .map((component) =>
+      'asNumber' in component && typeof component.asNumber === 'function'
+        ? component.asNumber()
+        : 0
+    );
 
-  const [red = 0.976, green = 0.451, blue = 0.086] = components.map((component) =>
-    Math.round(clamp(component, 0, 1) * 255)
+  const [red = 0.976, green = 0.451, blue = 0.086] = components.map(
+    (component) => Math.round(clamp(component, 0, 1) * 255)
   );
 
   return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue
@@ -1981,12 +2285,27 @@ function sanitizeRectsForCommentPayload(value: unknown): AnnotationRect[] {
         return null;
       }
 
-      const x = typeof rect.x === 'number' && Number.isFinite(rect.x) ? rect.x : null;
-      const y = typeof rect.y === 'number' && Number.isFinite(rect.y) ? rect.y : null;
-      const width = typeof rect.width === 'number' && Number.isFinite(rect.width) ? rect.width : null;
-      const height = typeof rect.height === 'number' && Number.isFinite(rect.height) ? rect.height : null;
+      const x =
+        typeof rect.x === 'number' && Number.isFinite(rect.x) ? rect.x : null;
+      const y =
+        typeof rect.y === 'number' && Number.isFinite(rect.y) ? rect.y : null;
+      const width =
+        typeof rect.width === 'number' && Number.isFinite(rect.width)
+          ? rect.width
+          : null;
+      const height =
+        typeof rect.height === 'number' && Number.isFinite(rect.height)
+          ? rect.height
+          : null;
 
-      if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) {
+      if (
+        x === null ||
+        y === null ||
+        width === null ||
+        height === null ||
+        width <= 0 ||
+        height <= 0
+      ) {
         return null;
       }
 

@@ -27,7 +27,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
       uri,
       dispose: () => {
         this.saveManager.disposeSession(uri);
-      }
+      },
     };
   }
 
@@ -36,13 +36,14 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
     const documentKey = document.uri.toString();
-    const webviews = this.webviewsByDocument.get(documentKey) ?? new Set<vscode.Webview>();
+    const webviews =
+      this.webviewsByDocument.get(documentKey) ?? new Set<vscode.Webview>();
     webviews.add(webviewPanel.webview);
     this.webviewsByDocument.set(documentKey, webviews);
 
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this.context.extensionUri]
+      localResourceRoots: [this.context.extensionUri],
     };
 
     webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
@@ -98,8 +99,8 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     const message: ExtensionToWebviewMessage = {
       type: 'commentAuthorUpdated',
       payload: {
-        commentAuthor
-      }
+        commentAuthor,
+      },
     };
 
     const deliveries: Array<Thenable<boolean>> = [];
@@ -112,7 +113,10 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     await Promise.all(deliveries);
   }
 
-  private async postInitialState(uri: vscode.Uri, webview: vscode.Webview): Promise<void> {
+  private async postInitialState(
+    uri: vscode.Uri,
+    webview: vscode.Webview
+  ): Promise<void> {
     try {
       const pdfBuffer = await this.saveManager.getPdfBytes(uri);
       const livePdfBuffer = await this.saveManager.getLivePdfBytes(uri);
@@ -129,8 +133,8 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
           commentAuthor,
           annotations,
           formFields,
-          capabilities: createDefaultCapabilities()
-        }
+          capabilities: createDefaultCapabilities(),
+        },
       };
 
       webview.postMessage(message);
@@ -174,8 +178,8 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         await webview.postMessage({
           type: 'formFieldsReplaced',
           payload: {
-            formFields: resetFormFields
-          }
+            formFields: resetFormFields,
+          },
         } satisfies ExtensionToWebviewMessage);
         await this.postSaved(webview);
         return;
@@ -188,7 +192,10 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     }
   }
 
-  private async executeButtonAction(action: PdfButtonAction, formFields: PdfFormField[]): Promise<void> {
+  private async executeButtonAction(
+    action: PdfButtonAction,
+    formFields: PdfFormField[]
+  ): Promise<void> {
     switch (action.type) {
       case 'submit':
         await this.saveManager.submitForm(formFields, action);
@@ -201,7 +208,9 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         await vscode.env.openExternal(vscode.Uri.parse(action.url));
         return;
       case 'unsupported':
-        throw new Error(action.reason || 'This PDF button uses an unsupported action.');
+        throw new Error(
+          action.reason || 'This PDF button uses an unsupported action.'
+        );
       case 'reset':
         return;
       default:
@@ -209,12 +218,15 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     }
   }
 
-  private async postError(webview: vscode.Webview, error: unknown): Promise<void> {
+  private async postError(
+    webview: vscode.Webview,
+    error: unknown
+  ): Promise<void> {
     const message: ExtensionToWebviewMessage = {
       type: 'error',
       payload: {
-        message: error instanceof Error ? error.message : 'Unknown error'
-      }
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
     };
 
     await webview.postMessage(message);
@@ -224,15 +236,18 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     const message: ExtensionToWebviewMessage = {
       type: 'saved',
       payload: {
-        savedAt: new Date().toISOString()
-      }
+        savedAt: new Date().toISOString(),
+      },
     };
 
     await webview.postMessage(message);
   }
 
   private resolveCommentAuthor(): string {
-    const configured = vscode.workspace.getConfiguration('pdfStudio').get<string>('commentAuthor')?.trim();
+    const configured = vscode.workspace
+      .getConfiguration('pdfStudio')
+      .get<string>('commentAuthor')
+      ?.trim();
     if (configured) {
       return configured;
     }
@@ -253,7 +268,9 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     const nonce = getNonce();
     const toWebviewUri = (segments: string[]): string =>
       webview
-        .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, ...segments))
+        .asWebviewUri(
+          vscode.Uri.joinPath(this.context.extensionUri, ...segments)
+        )
         .toString();
 
     const html = [
@@ -272,7 +289,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
       '  <div id="app"></div>',
       `  <script nonce="${nonce}" type="module" src="${toWebviewUri(['media', 'main.js'])}"></script>`,
       '</body>',
-      '</html>'
+      '</html>',
     ].join('\n');
 
     return html;
@@ -280,7 +297,8 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
 }
 
 function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let value = '';
 
   for (let index = 0; index < 32; index += 1) {

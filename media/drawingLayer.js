@@ -3,7 +3,9 @@ function pointInsideRect(point, rect, scaleX, scaleY) {
   const top = rect.y * scaleY;
   const right = left + rect.width * scaleX;
   const bottom = top + rect.height * scaleY;
-  return point.x >= left && point.x <= right && point.y >= top && point.y <= bottom;
+  return (
+    point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
+  );
 }
 
 function distanceToSegment(point, start, end) {
@@ -14,7 +16,14 @@ function distanceToSegment(point, start, end) {
     return Math.hypot(point.x - start.x, point.y - start.y);
   }
 
-  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+        (dx * dx + dy * dy)
+    )
+  );
   const projectionX = start.x + t * dx;
   const projectionY = start.y + t * dy;
   return Math.hypot(point.x - projectionX, point.y - projectionY);
@@ -26,8 +35,10 @@ function drawStroke(context, canvas, stroke) {
   }
 
   context.strokeStyle = stroke.color;
-  const scaleX = canvas.width / Math.max(stroke.viewportWidth || canvas.width, 1);
-  const scaleY = canvas.height / Math.max(stroke.viewportHeight || canvas.height, 1);
+  const scaleX =
+    canvas.width / Math.max(stroke.viewportWidth || canvas.width, 1);
+  const scaleY =
+    canvas.height / Math.max(stroke.viewportHeight || canvas.height, 1);
   context.lineWidth = stroke.width * ((scaleX + scaleY) / 2);
   context.lineCap = 'round';
   context.lineJoin = 'round';
@@ -57,12 +68,17 @@ function isStylusEraseEvent(event) {
 export function createDrawingLayer(pageEntries, options) {
   const state = {
     strokes: [],
-    currentStroke: null
+    currentStroke: null,
   };
 
   function redrawPage(pageEntry) {
     const context = pageEntry.drawingCanvas.getContext('2d');
-    context.clearRect(0, 0, pageEntry.drawingCanvas.width, pageEntry.drawingCanvas.height);
+    context.clearRect(
+      0,
+      0,
+      pageEntry.drawingCanvas.width,
+      pageEntry.drawingCanvas.height
+    );
 
     for (const stroke of state.strokes) {
       if (stroke.page === pageEntry.pageNumber) {
@@ -85,7 +101,7 @@ export function createDrawingLayer(pageEntries, options) {
     const rect = canvas.getBoundingClientRect();
     return {
       x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
     };
   }
 
@@ -96,7 +112,10 @@ export function createDrawingLayer(pageEntries, options) {
 
     if (state.currentStroke.points.length > 1) {
       state.strokes.push(state.currentStroke);
-      options.onChange(structuredClone(state.strokes), structuredClone(state.currentStroke));
+      options.onChange(
+        structuredClone(state.strokes),
+        structuredClone(state.currentStroke)
+      );
     }
 
     state.currentStroke = null;
@@ -106,8 +125,13 @@ export function createDrawingLayer(pageEntries, options) {
   function eraseAtPoint(pageEntry, point) {
     const targetStroke = findStrokeNearPoint(pageEntry.pageNumber, point);
     if (targetStroke) {
-      state.strokes = state.strokes.filter((stroke) => stroke.id !== targetStroke.id);
-      options.onErase?.(structuredClone(targetStroke), structuredClone(state.strokes));
+      state.strokes = state.strokes.filter(
+        (stroke) => stroke.id !== targetStroke.id
+      );
+      options.onErase?.(
+        structuredClone(targetStroke),
+        structuredClone(state.strokes)
+      );
       redrawAll();
       return true;
     }
@@ -117,7 +141,10 @@ export function createDrawingLayer(pageEntries, options) {
       const remainingHighlights = (options.getHighlights?.() ?? []).filter(
         (highlight) => highlight.id !== targetHighlight.id
       );
-      options.onEraseHighlight?.(structuredClone(targetHighlight), structuredClone(remainingHighlights));
+      options.onEraseHighlight?.(
+        structuredClone(targetHighlight),
+        structuredClone(remainingHighlights)
+      );
       return true;
     }
 
@@ -133,15 +160,22 @@ export function createDrawingLayer(pageEntries, options) {
         continue;
       }
 
-      const scaleX = point.viewportWidth / Math.max(stroke.viewportWidth || point.viewportWidth, 1);
-      const scaleY = point.viewportHeight / Math.max(stroke.viewportHeight || point.viewportHeight, 1);
-      const threshold = Math.max(stroke.width * ((scaleX + scaleY) / 2) * 1.5, 14);
+      const scaleX =
+        point.viewportWidth /
+        Math.max(stroke.viewportWidth || point.viewportWidth, 1);
+      const scaleY =
+        point.viewportHeight /
+        Math.max(stroke.viewportHeight || point.viewportHeight, 1);
+      const threshold = Math.max(
+        stroke.width * ((scaleX + scaleY) / 2) * 1.5,
+        14
+      );
 
       for (let index = 0; index < stroke.points.length; index += 1) {
         const candidate = stroke.points[index];
         const currentPoint = {
           x: candidate.x * scaleX,
-          y: candidate.y * scaleY
+          y: candidate.y * scaleY,
         };
         const previous = stroke.points[index - 1];
         const distance = previous
@@ -149,7 +183,7 @@ export function createDrawingLayer(pageEntries, options) {
               point,
               {
                 x: previous.x * scaleX,
-                y: previous.y * scaleY
+                y: previous.y * scaleY,
               },
               currentPoint
             )
@@ -171,8 +205,12 @@ export function createDrawingLayer(pageEntries, options) {
         continue;
       }
 
-      const scaleX = point.viewportWidth / Math.max(highlight.viewportWidth || point.viewportWidth, 1);
-      const scaleY = point.viewportHeight / Math.max(highlight.viewportHeight || point.viewportHeight, 1);
+      const scaleX =
+        point.viewportWidth /
+        Math.max(highlight.viewportWidth || point.viewportWidth, 1);
+      const scaleY =
+        point.viewportHeight /
+        Math.max(highlight.viewportHeight || point.viewportHeight, 1);
 
       for (const rect of highlight.rects) {
         if (pointInsideRect(point, rect, scaleX, scaleY)) {
@@ -199,7 +237,7 @@ export function createDrawingLayer(pageEntries, options) {
         const point = {
           ...toPoint(canvas, event),
           viewportWidth: canvas.width,
-          viewportHeight: canvas.height
+          viewportHeight: canvas.height,
         };
         eraseAtPoint(pageEntry, point);
       },
@@ -217,7 +255,7 @@ export function createDrawingLayer(pageEntries, options) {
         const point = {
           ...toPoint(canvas, event),
           viewportWidth: canvas.width,
-          viewportHeight: canvas.height
+          viewportHeight: canvas.height,
         };
         eraseAtPoint(pageEntry, point);
         return;
@@ -230,13 +268,17 @@ export function createDrawingLayer(pageEntries, options) {
         width: options.getWidth(),
         viewportWidth: canvas.width,
         viewportHeight: canvas.height,
-        points: [toPoint(canvas, event)]
+        points: [toPoint(canvas, event)],
       };
       redrawPage(pageEntry);
     });
 
     canvas.addEventListener('pointermove', (event) => {
-      if (!state.currentStroke || state.currentStroke.page !== pageEntry.pageNumber || options.getMode() !== 'annotate') {
+      if (
+        !state.currentStroke ||
+        state.currentStroke.page !== pageEntry.pageNumber ||
+        options.getMode() !== 'annotate'
+      ) {
         return;
       }
 
@@ -267,6 +309,6 @@ export function createDrawingLayer(pageEntries, options) {
       state.strokes = state.strokes.slice(0, -1);
       redrawAll();
       return structuredClone(lastStroke);
-    }
+    },
   };
 }

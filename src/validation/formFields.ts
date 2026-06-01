@@ -9,7 +9,7 @@ import {
   type PdfOptionListFormField,
   type PdfRadioFormField,
   type PdfTextFieldSemantic,
-  type PdfTextFormField
+  type PdfTextFormField,
 } from '../../models/formField';
 
 const MAX_FORM_FIELDS = 2_000;
@@ -65,11 +65,13 @@ function sanitizeFieldBase(
   return {
     name,
     readOnly: Boolean(input.readOnly),
-    widgets
+    widgets,
   };
 }
 
-function sanitizeTextField(input: Record<string, unknown>): PdfTextFormField | null {
+function sanitizeTextField(
+  input: Record<string, unknown>
+): PdfTextFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -81,11 +83,13 @@ function sanitizeTextField(input: Record<string, unknown>): PdfTextFormField | n
     value: sanitizeTextValue(input.value),
     multiline: Boolean(input.multiline),
     maxLength: sanitizeNullablePositiveInteger(input.maxLength),
-    semantic: sanitizeTextSemantic(input.semantic)
+    semantic: sanitizeTextSemantic(input.semantic),
   };
 }
 
-function sanitizeCheckboxField(input: Record<string, unknown>): PdfCheckboxFormField | null {
+function sanitizeCheckboxField(
+  input: Record<string, unknown>
+): PdfCheckboxFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -94,11 +98,13 @@ function sanitizeCheckboxField(input: Record<string, unknown>): PdfCheckboxFormF
   return {
     ...base,
     type: 'checkbox',
-    checked: Boolean(input.checked)
+    checked: Boolean(input.checked),
   };
 }
 
-function sanitizeRadioField(input: Record<string, unknown>): PdfRadioFormField | null {
+function sanitizeRadioField(
+  input: Record<string, unknown>
+): PdfRadioFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -107,12 +113,17 @@ function sanitizeRadioField(input: Record<string, unknown>): PdfRadioFormField |
   return {
     ...base,
     type: 'radio',
-    value: typeof input.value === 'string' && input.value.length ? input.value.slice(0, MAX_FIELD_VALUE_LENGTH) : null,
-    options: sanitizeOptions(input.options)
+    value:
+      typeof input.value === 'string' && input.value.length
+        ? input.value.slice(0, MAX_FIELD_VALUE_LENGTH)
+        : null,
+    options: sanitizeOptions(input.options),
   };
 }
 
-function sanitizeDropdownField(input: Record<string, unknown>): PdfDropdownFormField | null {
+function sanitizeDropdownField(
+  input: Record<string, unknown>
+): PdfDropdownFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -124,11 +135,13 @@ function sanitizeDropdownField(input: Record<string, unknown>): PdfDropdownFormF
     value: sanitizeSelectedValues(input.value),
     options: sanitizeOptions(input.options),
     editable: Boolean(input.editable),
-    multiSelect: Boolean(input.multiSelect)
+    multiSelect: Boolean(input.multiSelect),
   };
 }
 
-function sanitizeOptionListField(input: Record<string, unknown>): PdfOptionListFormField | null {
+function sanitizeOptionListField(
+  input: Record<string, unknown>
+): PdfOptionListFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -139,11 +152,13 @@ function sanitizeOptionListField(input: Record<string, unknown>): PdfOptionListF
     type: 'optionList',
     value: sanitizeSelectedValues(input.value),
     options: sanitizeOptions(input.options),
-    multiSelect: Boolean(input.multiSelect)
+    multiSelect: Boolean(input.multiSelect),
   };
 }
 
-function sanitizeButtonField(input: Record<string, unknown>): PdfButtonFormField | null {
+function sanitizeButtonField(
+  input: Record<string, unknown>
+): PdfButtonFormField | null {
   const base = sanitizeFieldBase(input);
   if (!base) {
     return null;
@@ -156,7 +171,7 @@ function sanitizeButtonField(input: Record<string, unknown>): PdfButtonFormField
       typeof input.label === 'string' && input.label.trim().length
         ? input.label.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
         : base.name,
-    action: sanitizeButtonAction(input.action)
+    action: sanitizeButtonAction(input.action),
   };
 }
 
@@ -179,12 +194,16 @@ function sanitizeButtonAction(input: unknown): PdfButtonAction | null {
 
   return {
     type,
-    url: typeof input.url === 'string' && input.url.trim().length ? input.url.trim().slice(0, MAX_FIELD_VALUE_LENGTH) : null,
-    method: input.method === 'GET' || input.method === 'POST' ? input.method : null,
+    url:
+      typeof input.url === 'string' && input.url.trim().length
+        ? input.url.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
+        : null,
+    method:
+      input.method === 'GET' || input.method === 'POST' ? input.method : null,
     reason:
       typeof input.reason === 'string' && input.reason.trim().length
         ? input.reason.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
-        : null
+        : null,
   };
 }
 
@@ -209,7 +228,14 @@ function sanitizeWidget(input: unknown): PdfFormFieldWidget | null {
   const y = sanitizeFiniteNumber(input.y);
   const width = sanitizePositiveNumber(input.width);
   const height = sanitizePositiveNumber(input.height);
-  if (!id || page === null || x === null || y === null || width === null || height === null) {
+  if (
+    !id ||
+    page === null ||
+    x === null ||
+    y === null ||
+    width === null ||
+    height === null
+  ) {
     return null;
   }
 
@@ -220,7 +246,10 @@ function sanitizeWidget(input: unknown): PdfFormFieldWidget | null {
     y,
     width,
     height,
-    option: typeof input.option === 'string' && input.option.length ? input.option.slice(0, MAX_FIELD_VALUE_LENGTH) : undefined
+    option:
+      typeof input.option === 'string' && input.option.length
+        ? input.option.slice(0, MAX_FIELD_VALUE_LENGTH)
+        : undefined,
   };
 }
 
@@ -246,19 +275,27 @@ function sanitizeSelectedValues(input: unknown): string[] {
 }
 
 function sanitizeTextValue(input: unknown): string {
-  return typeof input === 'string' ? input.slice(0, MAX_FIELD_VALUE_LENGTH) : '';
+  return typeof input === 'string'
+    ? input.slice(0, MAX_FIELD_VALUE_LENGTH)
+    : '';
 }
 
 function sanitizeTextSemantic(input: unknown): PdfTextFieldSemantic {
-  return input === 'fullName' || input === 'email' || input === 'date' ? input : 'generic';
+  return input === 'fullName' || input === 'email' || input === 'date'
+    ? input
+    : 'generic';
 }
 
 function sanitizeNullablePositiveInteger(input: unknown): number | null {
-  return typeof input === 'number' && Number.isInteger(input) && input > 0 ? input : null;
+  return typeof input === 'number' && Number.isInteger(input) && input > 0
+    ? input
+    : null;
 }
 
 function sanitizePositiveInteger(input: unknown): number | null {
-  return typeof input === 'number' && Number.isInteger(input) && input > 0 ? input : null;
+  return typeof input === 'number' && Number.isInteger(input) && input > 0
+    ? input
+    : null;
 }
 
 function sanitizeFiniteNumber(input: unknown): number | null {
@@ -266,11 +303,15 @@ function sanitizeFiniteNumber(input: unknown): number | null {
 }
 
 function sanitizePositiveNumber(input: unknown): number | null {
-  return typeof input === 'number' && Number.isFinite(input) && input > 0 ? input : null;
+  return typeof input === 'number' && Number.isFinite(input) && input > 0
+    ? input
+    : null;
 }
 
 function sanitizeName(input: unknown): string | null {
-  return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+  return typeof input === 'string' && input.trim().length > 0
+    ? input.trim()
+    : null;
 }
 
 function isObject(input: unknown): input is Record<string, unknown> {

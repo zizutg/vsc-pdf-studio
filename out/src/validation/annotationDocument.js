@@ -18,7 +18,7 @@ function sanitizeAnnotationDocument(input) {
             : new Date(0).toISOString(),
         strokes,
         highlights,
-        comments
+        comments,
     };
 }
 function sanitizeStrokes(value) {
@@ -47,7 +47,7 @@ function sanitizeStroke(value) {
         page: sanitizePage(value.page),
         viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
         viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
-        points
+        points,
     };
 }
 function sanitizeHighlights(value) {
@@ -71,13 +71,17 @@ function sanitizeHighlight(value) {
     }
     return {
         id: sanitizeId(value.id),
-        kind: value.kind === 'underline' ? 'underline' : value.kind === 'strikeout' ? 'strikeout' : 'highlight',
+        kind: value.kind === 'underline'
+            ? 'underline'
+            : value.kind === 'strikeout'
+                ? 'strikeout'
+                : 'highlight',
         color: sanitizeColor(value.color),
         page: sanitizePage(value.page),
         viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
         viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
         rects,
-        attachedNote: sanitizeMarkupNote(value.attachedNote)
+        attachedNote: sanitizeMarkupNote(value.attachedNote),
     };
 }
 function sanitizeComments(value) {
@@ -104,14 +108,18 @@ function sanitizeComment(value) {
     }
     return {
         id: sanitizeId(value.id),
-        author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
-        modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
+        author: typeof value.author === 'string'
+            ? value.author.trim().slice(0, 120)
+            : undefined,
+        modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim()
+            ? value.modifiedAt.trim()
+            : undefined,
         color: sanitizeColor(value.color),
         page: sanitizePage(value.page),
         viewportWidth: sanitizePositiveNumber(value.viewportWidth, 1),
         viewportHeight: sanitizePositiveNumber(value.viewportHeight, 1),
         rects,
-        text
+        text,
     };
 }
 function sanitizeMarkupNote(value) {
@@ -126,9 +134,15 @@ function sanitizeMarkupNote(value) {
     }
     return {
         text,
-        author: typeof value.author === 'string' ? value.author.trim().slice(0, 120) : undefined,
-        modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim() ? value.modifiedAt.trim() : undefined,
-        subject: typeof value.subject === 'string' ? value.subject.trim().slice(0, 120) : undefined
+        author: typeof value.author === 'string'
+            ? value.author.trim().slice(0, 120)
+            : undefined,
+        modifiedAt: typeof value.modifiedAt === 'string' && value.modifiedAt.trim()
+            ? value.modifiedAt.trim()
+            : undefined,
+        subject: typeof value.subject === 'string'
+            ? value.subject.trim().slice(0, 120)
+            : undefined,
     };
 }
 function sanitizePoints(value, maxLength) {
@@ -181,10 +195,14 @@ function sanitizeFiniteNumber(value) {
     return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 function sanitizePositiveNumber(value, fallback) {
-    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? value
+        : fallback;
 }
 function sanitizePage(value) {
-    return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 1;
+    return typeof value === 'number' && Number.isInteger(value) && value > 0
+        ? value
+        : 1;
 }
 function sanitizeColor(value) {
     return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim())

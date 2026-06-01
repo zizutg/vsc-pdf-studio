@@ -35,7 +35,8 @@ To set the name used for PDF Studio comments, open the Command Palette and run:
 
 ## Git Tracking
 
-If you want to track PDF revisions in Git, configure your repository with an appropriate `.gitattributes` setup for PDF files. 
+If you want to track PDF revisions in Git, configure your repository with an appropriate `.gitattributes` setup for PDF files.
+
 - PDF Studio writes changes back into the PDF itself, but version tracking and diff strategy are still handled by Git rather than by the extension.
 
 For standard Git tracking, add this to `.gitattributes`:

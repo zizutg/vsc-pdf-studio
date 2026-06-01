@@ -13,17 +13,23 @@ export function activate(context: vscode.ExtensionContext): void {
       const currentAuthor = config.get<string>('commentAuthor') ?? '';
       const nextAuthor = await vscode.window.showInputBox({
         title: 'PDF Studio: Set Comment Author',
-        prompt: 'Enter the author name to write into native PDF comments. Leave empty to use the OS username fallback.',
-        placeHolder: currentAuthor || 'Leave empty to use the OS username fallback',
+        prompt:
+          'Enter the author name to write into native PDF comments. Leave empty to use the OS username fallback.',
+        placeHolder:
+          currentAuthor || 'Leave empty to use the OS username fallback',
         value: currentAuthor,
-        ignoreFocusOut: true
+        ignoreFocusOut: true,
       });
 
       if (typeof nextAuthor !== 'string') {
         return;
       }
 
-      await config.update('commentAuthor', nextAuthor.trim(), vscode.ConfigurationTarget.Global);
+      await config.update(
+        'commentAuthor',
+        nextAuthor.trim(),
+        vscode.ConfigurationTarget.Global
+      );
       const message = nextAuthor.trim()
         ? `PDF Studio comment author set to "${nextAuthor.trim()}".`
         : 'PDF Studio comment author cleared. OS username fallback will be used.';
@@ -36,8 +42,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.window.registerCustomEditorProvider(PDF_STUDIO_VIEW_TYPE, provider, {
       webviewOptions: {
-        retainContextWhenHidden: true
-      }
+        retainContextWhenHidden: true,
+      },
     })
   );
 }

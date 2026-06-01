@@ -55,7 +55,7 @@ class PdfEditorProvider {
             uri,
             dispose: () => {
                 this.saveManager.disposeSession(uri);
-            }
+            },
         };
     }
     async resolveCustomEditor(document, webviewPanel) {
@@ -65,7 +65,7 @@ class PdfEditorProvider {
         this.webviewsByDocument.set(documentKey, webviews);
         webviewPanel.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this.context.extensionUri]
+            localResourceRoots: [this.context.extensionUri],
         };
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
         webviewPanel.webview.onDidReceiveMessage(async (rawMessage) => {
@@ -104,8 +104,8 @@ class PdfEditorProvider {
         const message = {
             type: 'commentAuthorUpdated',
             payload: {
-                commentAuthor
-            }
+                commentAuthor,
+            },
         };
         const deliveries = [];
         for (const webviews of this.webviewsByDocument.values()) {
@@ -131,8 +131,8 @@ class PdfEditorProvider {
                     commentAuthor,
                     annotations,
                     formFields,
-                    capabilities: (0, capabilities_1.createDefaultCapabilities)()
-                }
+                    capabilities: (0, capabilities_1.createDefaultCapabilities)(),
+                },
             };
             webview.postMessage(message);
         }
@@ -162,8 +162,8 @@ class PdfEditorProvider {
                 await webview.postMessage({
                     type: 'formFieldsReplaced',
                     payload: {
-                        formFields: resetFormFields
-                    }
+                        formFields: resetFormFields,
+                    },
                 });
                 await this.postSaved(webview);
                 return;
@@ -199,8 +199,8 @@ class PdfEditorProvider {
         const message = {
             type: 'error',
             payload: {
-                message: error instanceof Error ? error.message : 'Unknown error'
-            }
+                message: error instanceof Error ? error.message : 'Unknown error',
+            },
         };
         await webview.postMessage(message);
     }
@@ -208,13 +208,16 @@ class PdfEditorProvider {
         const message = {
             type: 'saved',
             payload: {
-                savedAt: new Date().toISOString()
-            }
+                savedAt: new Date().toISOString(),
+            },
         };
         await webview.postMessage(message);
     }
     resolveCommentAuthor() {
-        const configured = vscode.workspace.getConfiguration('pdfStudio').get('commentAuthor')?.trim();
+        const configured = vscode.workspace
+            .getConfiguration('pdfStudio')
+            .get('commentAuthor')
+            ?.trim();
         if (configured) {
             return configured;
         }
@@ -250,7 +253,7 @@ class PdfEditorProvider {
             '  <div id="app"></div>',
             `  <script nonce="${nonce}" type="module" src="${toWebviewUri(['media', 'main.js'])}"></script>`,
             '</body>',
-            '</html>'
+            '</html>',
         ].join('\n');
         return html;
     }

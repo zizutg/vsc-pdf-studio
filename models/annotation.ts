@@ -63,5 +63,5 @@ export const emptyAnnotationDocument = (): AnnotationDocument => ({
   updatedAt: new Date(0).toISOString(),
   strokes: [],
   highlights: [],
-  comments: []
+  comments: [],
 });

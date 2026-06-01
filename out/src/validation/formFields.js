@@ -47,7 +47,7 @@ function sanitizeFieldBase(input) {
     return {
         name,
         readOnly: Boolean(input.readOnly),
-        widgets
+        widgets,
     };
 }
 function sanitizeTextField(input) {
@@ -61,7 +61,7 @@ function sanitizeTextField(input) {
         value: sanitizeTextValue(input.value),
         multiline: Boolean(input.multiline),
         maxLength: sanitizeNullablePositiveInteger(input.maxLength),
-        semantic: sanitizeTextSemantic(input.semantic)
+        semantic: sanitizeTextSemantic(input.semantic),
     };
 }
 function sanitizeCheckboxField(input) {
@@ -72,7 +72,7 @@ function sanitizeCheckboxField(input) {
     return {
         ...base,
         type: 'checkbox',
-        checked: Boolean(input.checked)
+        checked: Boolean(input.checked),
     };
 }
 function sanitizeRadioField(input) {
@@ -83,8 +83,10 @@ function sanitizeRadioField(input) {
     return {
         ...base,
         type: 'radio',
-        value: typeof input.value === 'string' && input.value.length ? input.value.slice(0, MAX_FIELD_VALUE_LENGTH) : null,
-        options: sanitizeOptions(input.options)
+        value: typeof input.value === 'string' && input.value.length
+            ? input.value.slice(0, MAX_FIELD_VALUE_LENGTH)
+            : null,
+        options: sanitizeOptions(input.options),
     };
 }
 function sanitizeDropdownField(input) {
@@ -98,7 +100,7 @@ function sanitizeDropdownField(input) {
         value: sanitizeSelectedValues(input.value),
         options: sanitizeOptions(input.options),
         editable: Boolean(input.editable),
-        multiSelect: Boolean(input.multiSelect)
+        multiSelect: Boolean(input.multiSelect),
     };
 }
 function sanitizeOptionListField(input) {
@@ -111,7 +113,7 @@ function sanitizeOptionListField(input) {
         type: 'optionList',
         value: sanitizeSelectedValues(input.value),
         options: sanitizeOptions(input.options),
-        multiSelect: Boolean(input.multiSelect)
+        multiSelect: Boolean(input.multiSelect),
     };
 }
 function sanitizeButtonField(input) {
@@ -125,7 +127,7 @@ function sanitizeButtonField(input) {
         label: typeof input.label === 'string' && input.label.trim().length
             ? input.label.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
             : base.name,
-        action: sanitizeButtonAction(input.action)
+        action: sanitizeButtonAction(input.action),
     };
 }
 function sanitizeButtonAction(input) {
@@ -144,11 +146,13 @@ function sanitizeButtonAction(input) {
     }
     return {
         type,
-        url: typeof input.url === 'string' && input.url.trim().length ? input.url.trim().slice(0, MAX_FIELD_VALUE_LENGTH) : null,
+        url: typeof input.url === 'string' && input.url.trim().length
+            ? input.url.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
+            : null,
         method: input.method === 'GET' || input.method === 'POST' ? input.method : null,
         reason: typeof input.reason === 'string' && input.reason.trim().length
             ? input.reason.trim().slice(0, MAX_FIELD_VALUE_LENGTH)
-            : null
+            : null,
     };
 }
 function sanitizeWidgets(input) {
@@ -169,7 +173,12 @@ function sanitizeWidget(input) {
     const y = sanitizeFiniteNumber(input.y);
     const width = sanitizePositiveNumber(input.width);
     const height = sanitizePositiveNumber(input.height);
-    if (!id || page === null || x === null || y === null || width === null || height === null) {
+    if (!id ||
+        page === null ||
+        x === null ||
+        y === null ||
+        width === null ||
+        height === null) {
         return null;
     }
     return {
@@ -179,7 +188,9 @@ function sanitizeWidget(input) {
         y,
         width,
         height,
-        option: typeof input.option === 'string' && input.option.length ? input.option.slice(0, MAX_FIELD_VALUE_LENGTH) : undefined
+        option: typeof input.option === 'string' && input.option.length
+            ? input.option.slice(0, MAX_FIELD_VALUE_LENGTH)
+            : undefined,
     };
 }
 function sanitizeOptions(input) {
@@ -200,25 +211,37 @@ function sanitizeSelectedValues(input) {
         .map((value) => value.slice(0, MAX_FIELD_VALUE_LENGTH));
 }
 function sanitizeTextValue(input) {
-    return typeof input === 'string' ? input.slice(0, MAX_FIELD_VALUE_LENGTH) : '';
+    return typeof input === 'string'
+        ? input.slice(0, MAX_FIELD_VALUE_LENGTH)
+        : '';
 }
 function sanitizeTextSemantic(input) {
-    return input === 'fullName' || input === 'email' || input === 'date' ? input : 'generic';
+    return input === 'fullName' || input === 'email' || input === 'date'
+        ? input
+        : 'generic';
 }
 function sanitizeNullablePositiveInteger(input) {
-    return typeof input === 'number' && Number.isInteger(input) && input > 0 ? input : null;
+    return typeof input === 'number' && Number.isInteger(input) && input > 0
+        ? input
+        : null;
 }
 function sanitizePositiveInteger(input) {
-    return typeof input === 'number' && Number.isInteger(input) && input > 0 ? input : null;
+    return typeof input === 'number' && Number.isInteger(input) && input > 0
+        ? input
+        : null;
 }
 function sanitizeFiniteNumber(input) {
     return typeof input === 'number' && Number.isFinite(input) ? input : null;
 }
 function sanitizePositiveNumber(input) {
-    return typeof input === 'number' && Number.isFinite(input) && input > 0 ? input : null;
+    return typeof input === 'number' && Number.isFinite(input) && input > 0
+        ? input
+        : null;
 }
 function sanitizeName(input) {
-    return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+    return typeof input === 'string' && input.trim().length > 0
+        ? input.trim()
+        : null;
 }
 function isObject(input) {
     return typeof input === 'object' && input !== null;

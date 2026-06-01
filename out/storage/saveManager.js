@@ -106,7 +106,7 @@ class SaveManager {
         const pages = pdfDocument.getPages();
         removeNativeMarkupAnnotations(pdfDocument, new Set([
             ...previousAnnotations.highlights.map((highlight) => highlight.id),
-            ...annotations.highlights.map((highlight) => highlight.id)
+            ...annotations.highlights.map((highlight) => highlight.id),
         ]));
         for (const stroke of annotations.strokes) {
             const page = pages[stroke.page - 1];
@@ -123,7 +123,7 @@ class SaveManager {
                     end: toPdfPoint(end, scaleX, scaleY, page.getHeight()),
                     thickness: lineWidth,
                     color,
-                    opacity: 1
+                    opacity: 1,
                 });
             }
         }
@@ -151,7 +151,7 @@ class SaveManager {
                         height: thickness,
                         color,
                         opacity: 1,
-                        borderWidth: 0
+                        borderWidth: 0,
                     });
                     continue;
                 }
@@ -160,12 +160,14 @@ class SaveManager {
                     const thickness = Math.max(1, Math.min(renderedHeight * 0.16, 3));
                     page.drawRectangle({
                         x: rect.x * scaleX,
-                        y: page.getHeight() - (rect.y + rect.height * 0.5) * scaleY - thickness * 0.5,
+                        y: page.getHeight() -
+                            (rect.y + rect.height * 0.5) * scaleY -
+                            thickness * 0.5,
                         width: rect.width * scaleX,
                         height: thickness,
                         color,
                         opacity: 1,
-                        borderWidth: 0
+                        borderWidth: 0,
                     });
                     continue;
                 }
@@ -176,7 +178,7 @@ class SaveManager {
                     height: rect.height * scaleY,
                     color,
                     opacity: 0.28,
-                    borderWidth: 0
+                    borderWidth: 0,
                 });
             }
         }
@@ -189,11 +191,11 @@ class SaveManager {
         }
         const storedAnnotations = {
             ...annotations,
-            comments: []
+            comments: [],
         };
         pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY), pdf_lib_1.PDFHexString.fromText(JSON.stringify(storedAnnotations)));
         const baseStream = pdfDocument.context.flateStream(basePdfBytes, {
-            Type: 'EmbeddedFile'
+            Type: 'EmbeddedFile',
         });
         const baseStreamRef = pdfDocument.context.register(baseStream);
         pdfDocument.catalog.set(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_BASE_KEY), baseStreamRef);
@@ -221,7 +223,8 @@ class SaveManager {
         this.sessionFormFields.set(cacheKey, formFields);
         this.sessionResetFormFields.set(cacheKey, extractResetFormFields(pdfDocument, formFields));
         const rawAnnotationData = pdfDocument.catalog.lookup(pdf_lib_1.PDFName.of(constants_1.PDF_STUDIO_DATA_KEY));
-        const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString || rawAnnotationData instanceof pdf_lib_1.PDFString
+        const annotationJson = rawAnnotationData instanceof pdf_lib_1.PDFHexString ||
+            rawAnnotationData instanceof pdf_lib_1.PDFString
             ? rawAnnotationData.decodeText()
             : null;
         const sanitizedAnnotations = parseStoredAnnotations(annotationJson);
@@ -232,7 +235,7 @@ class SaveManager {
             this.sessionAnnotations.set(cacheKey, {
                 ...(0, annotation_1.emptyAnnotationDocument)(),
                 highlights: nativeHighlights,
-                comments: nativeComments
+                comments: nativeComments,
             });
             this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
             return;
@@ -240,7 +243,7 @@ class SaveManager {
         this.sessionAnnotations.set(cacheKey, {
             ...sanitizedAnnotations,
             highlights: mergeHighlights(sanitizedAnnotations.highlights, nativeHighlights),
-            comments: mergeComments(sanitizedAnnotations.comments, nativeComments)
+            comments: mergeComments(sanitizedAnnotations.comments, nativeComments),
         });
         this.sessionFingerprints.set(cacheKey, await getFileFingerprint(pdfUri.fsPath));
     }
@@ -268,7 +271,7 @@ async function getFileFingerprint(fsPath) {
     const stats = await fs.stat(fsPath);
     return {
         size: stats.size,
-        mtimeMs: stats.mtimeMs
+        mtimeMs: stats.mtimeMs,
     };
 }
 function parseStoredAnnotations(annotationJson) {
@@ -281,11 +284,6 @@ function parseStoredAnnotations(annotationJson) {
     catch {
         return (0, annotation_1.emptyAnnotationDocument)();
     }
-}
-function hasRenderableStudioMarkup(annotations) {
-    return (annotations.strokes.length > 0 ||
-        annotations.highlights.length > 0 ||
-        annotations.comments.length > 0);
 }
 async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFormFields, embeddedBase, annotations) {
     if (!(embeddedBase instanceof pdf_lib_1.PDFRawStream)) {
@@ -331,13 +329,6 @@ async function resolveSessionBasePdfBytes(livePdfBytes, livePdfDocument, liveFor
         return livePdfBytes;
     }
     return embeddedBaseBytes;
-}
-function countNativeFormFields(pdfDocument) {
-    const form = pdfDocument.getForm();
-    if (form.hasXFA()) {
-        return 0;
-    }
-    return form.getFields().length;
 }
 async function materializeFormFieldsOnBase(basePdfBytes, liveFormFields) {
     const pdfDocument = await pdf_lib_1.PDFDocument.load(basePdfBytes);
@@ -536,7 +527,7 @@ function buildPageSignature(page) {
         contents ? contents.toString() : 'no-contents',
         annots ? annots.toString() : 'no-annots',
         mediaBox ? mediaBox.toString() : 'no-mediabox',
-        rotate ? rotate.toString() : 'no-rotate'
+        rotate ? rotate.toString() : 'no-rotate',
     ].join('|');
 }
 function buildFieldAppearanceOptions(page, widget) {
@@ -547,7 +538,7 @@ function buildFieldAppearanceOptions(page, widget) {
         height: widget.height,
         borderColor: (0, pdf_lib_1.rgb)(0.45, 0.45, 0.45),
         backgroundColor: (0, pdf_lib_1.rgb)(1, 1, 1),
-        textColor: (0, pdf_lib_1.rgb)(0.1, 0.1, 0.1)
+        textColor: (0, pdf_lib_1.rgb)(0.1, 0.1, 0.1),
     };
 }
 function setReadOnly(field, readOnly) {
@@ -569,7 +560,7 @@ function toSegments(points) {
 function toPdfPoint(point, scaleX, scaleY, pageHeight) {
     return {
         x: point.x * scaleX,
-        y: pageHeight - point.y * scaleY
+        y: pageHeight - point.y * scaleY,
     };
 }
 function toRgb(hex) {
@@ -662,23 +653,23 @@ function extractResetFormFields(pdfDocument, currentFormFields) {
             case 'text':
                 return {
                     ...fieldState,
-                    value: decodeDefaultTextValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                    value: decodeDefaultTextValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV'))),
                 };
             case 'checkbox':
                 return {
                     ...fieldState,
-                    checked: decodeDefaultCheckboxValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                    checked: decodeDefaultCheckboxValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV'))),
                 };
             case 'radio':
                 return {
                     ...fieldState,
-                    value: decodeDefaultChoiceValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                    value: decodeDefaultChoiceValue(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV'))),
                 };
             case 'dropdown':
             case 'optionList':
                 return {
                     ...fieldState,
-                    value: decodeDefaultChoiceValues(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV')))
+                    value: decodeDefaultChoiceValues(field.acroField.dict.lookup(pdf_lib_1.PDFName.of('DV'))),
                 };
             default:
                 return fieldState;
@@ -774,7 +765,7 @@ function createButtonActionDict(pdfDocument, action) {
     switch (action.type) {
         case 'reset':
             return pdfDocument.context.obj({
-                S: pdf_lib_1.PDFName.of('ResetForm')
+                S: pdf_lib_1.PDFName.of('ResetForm'),
             });
         case 'submit':
             if (!action.url) {
@@ -783,7 +774,7 @@ function createButtonActionDict(pdfDocument, action) {
             return pdfDocument.context.obj({
                 S: pdf_lib_1.PDFName.of('SubmitForm'),
                 F: pdf_lib_1.PDFString.of(action.url),
-                Flags: pdf_lib_1.PDFNumber.of(action.method === 'GET' ? 8 : 0)
+                Flags: pdf_lib_1.PDFNumber.of(action.method === 'GET' ? 8 : 0),
             });
         case 'mailto':
         case 'uri':
@@ -792,7 +783,7 @@ function createButtonActionDict(pdfDocument, action) {
             }
             return pdfDocument.context.obj({
                 S: pdf_lib_1.PDFName.of('URI'),
-                URI: pdf_lib_1.PDFString.of(action.url)
+                URI: pdf_lib_1.PDFString.of(action.url),
             });
         case 'unsupported':
         default:
@@ -807,9 +798,9 @@ async function executeHttpRequest(targetUrl, method, body) {
             headers: method === 'POST'
                 ? {
                     'content-type': 'application/x-www-form-urlencoded',
-                    'content-length': Buffer.byteLength(body || '').toString()
+                    'content-length': Buffer.byteLength(body || '').toString(),
                 }
-                : undefined
+                : undefined,
         }, (response) => {
             const statusCode = response.statusCode ?? 0;
             response.resume();
@@ -850,7 +841,7 @@ function addNativeCommentAnnotation(pdfDocument, page, comment) {
         M: pdf_lib_1.PDFString.of(toPdfDate(comment.modifiedAt ? new Date(comment.modifiedAt) : new Date())),
         C: pdfDocument.context.obj([color.red, color.green, color.blue]),
         Open: false,
-        F: 4
+        F: 4,
     });
     annotation.set(PDF_STUDIO_COMMENT_KEY, pdf_lib_1.PDFHexString.fromText(JSON.stringify({
         id: comment.id,
@@ -859,7 +850,7 @@ function addNativeCommentAnnotation(pdfDocument, page, comment) {
         color: comment.color,
         viewportWidth: comment.viewportWidth,
         viewportHeight: comment.viewportHeight,
-        rects: comment.rects
+        rects: comment.rects,
     })));
     const annotationRef = pdfDocument.context.register(annotation);
     page.node.addAnnot(annotationRef);
@@ -888,10 +879,17 @@ function addNativeMarkupAnnotation(pdfDocument, page, highlight) {
         maxX = Math.max(maxX, right);
         maxY = Math.max(maxY, top);
     }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    if (!Number.isFinite(minX) ||
+        !Number.isFinite(minY) ||
+        !Number.isFinite(maxX) ||
+        !Number.isFinite(maxY)) {
         return;
     }
-    const subtype = highlight.kind === 'underline' ? 'Underline' : highlight.kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+    const subtype = highlight.kind === 'underline'
+        ? 'Underline'
+        : highlight.kind === 'strikeout'
+            ? 'StrikeOut'
+            : 'Highlight';
     const annotation = pdfDocument.context.obj({
         Type: pdf_lib_1.PDFName.of('Annot'),
         Subtype: pdf_lib_1.PDFName.of(subtype),
@@ -902,7 +900,7 @@ function addNativeMarkupAnnotation(pdfDocument, page, highlight) {
         T: pdf_lib_1.PDFHexString.fromText((attachedNote.author || 'PDF Studio').trim()),
         M: pdf_lib_1.PDFString.of(toPdfDate(attachedNote.modifiedAt ? new Date(attachedNote.modifiedAt) : new Date())),
         C: pdfDocument.context.obj([color.red, color.green, color.blue]),
-        F: 4
+        F: 4,
     });
     if (attachedNote.subject?.trim()) {
         annotation.set(pdf_lib_1.PDFName.of('Subj'), pdf_lib_1.PDFHexString.fromText(attachedNote.subject.trim()));
@@ -915,13 +913,19 @@ function removeNativeMarkupAnnotation(page, annotationId, kind) {
     if (!annots) {
         return;
     }
-    const targetSubtype = kind === 'underline' ? 'Underline' : kind === 'strikeout' ? 'StrikeOut' : 'Highlight';
+    const targetSubtype = kind === 'underline'
+        ? 'Underline'
+        : kind === 'strikeout'
+            ? 'StrikeOut'
+            : 'Highlight';
     for (let index = annots.size() - 1; index >= 0; index -= 1) {
         const annotation = annots.lookupMaybe(index, pdf_lib_1.PDFDict);
         if (!annotation) {
             continue;
         }
-        const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
+        const subtype = annotation
+            .lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)
+            ?.decodeText();
         if (subtype !== targetSubtype) {
             continue;
         }
@@ -945,8 +949,12 @@ function removeNativeMarkupAnnotations(pdfDocument, annotationIds) {
             if (!annotation) {
                 continue;
             }
-            const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
-            if (subtype !== 'Highlight' && subtype !== 'Underline' && subtype !== 'StrikeOut') {
+            const subtype = annotation
+                .lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)
+                ?.decodeText();
+            if (subtype !== 'Highlight' &&
+                subtype !== 'Underline' &&
+                subtype !== 'StrikeOut') {
                 continue;
             }
             const nm = decodePdfText(annotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
@@ -976,11 +984,15 @@ function extractNativeComments(pdfDocument) {
             if (!annotation) {
                 continue;
             }
-            const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
+            const subtype = annotation
+                .lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)
+                ?.decodeText();
             let sourceAnnotation = annotation;
             if (subtype === 'Popup') {
                 const parent = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Parent'), pdf_lib_1.PDFDict);
-                const parentSubtype = parent?.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
+                const parentSubtype = parent
+                    ?.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)
+                    ?.decodeText();
                 if (!parent ||
                     (parentSubtype !== 'Text' && parentSubtype !== 'FreeText')) {
                     continue;
@@ -994,7 +1006,9 @@ function extractNativeComments(pdfDocument) {
             if (!contents.trim()) {
                 continue;
             }
-            const rect = sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)?.asRectangle() ??
+            const rect = sourceAnnotation
+                .lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)
+                ?.asRectangle() ??
                 annotation.lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)?.asRectangle();
             if (!rect) {
                 continue;
@@ -1002,7 +1016,8 @@ function extractNativeComments(pdfDocument) {
             const nm = decodePdfText(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('NM'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
             const author = decodePdfText(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('T'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString)).trim();
             const modifiedAt = decodePdfDate(sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('M'), pdf_lib_1.PDFString, pdf_lib_1.PDFHexString));
-            const colorArray = sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray) ?? annotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray);
+            const colorArray = sourceAnnotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray) ??
+                annotation.lookupMaybe(pdf_lib_1.PDFName.of('C'), pdf_lib_1.PDFArray);
             const color = colorArray ? colorArrayToHex(colorArray) : '#f97316';
             const pageWidth = page.getWidth();
             const pageHeight = page.getHeight();
@@ -1029,10 +1044,10 @@ function extractNativeComments(pdfDocument) {
                             x: rect.x,
                             y: pageHeight - rect.y - rect.height,
                             width: rect.width,
-                            height: rect.height
-                        }
+                            height: rect.height,
+                        },
                     ],
-                text: contents.trim()
+                text: contents.trim(),
             });
         }
     });
@@ -1051,8 +1066,12 @@ function extractNativeHighlights(pdfDocument) {
             if (!annotation) {
                 continue;
             }
-            const subtype = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)?.decodeText();
-            if (subtype !== 'Highlight' && subtype !== 'Underline' && subtype !== 'StrikeOut') {
+            const subtype = annotation
+                .lookupMaybe(pdf_lib_1.PDFName.of('Subtype'), pdf_lib_1.PDFName)
+                ?.decodeText();
+            if (subtype !== 'Highlight' &&
+                subtype !== 'Underline' &&
+                subtype !== 'StrikeOut') {
                 continue;
             }
             const pageWidth = page.getWidth();
@@ -1077,7 +1096,11 @@ function extractNativeHighlights(pdfDocument) {
             seenHighlightKeys.add(highlightId);
             highlights.push({
                 id: highlightId,
-                kind: subtype === 'Underline' ? 'underline' : subtype === 'StrikeOut' ? 'strikeout' : 'highlight',
+                kind: subtype === 'Underline'
+                    ? 'underline'
+                    : subtype === 'StrikeOut'
+                        ? 'strikeout'
+                        : 'highlight',
                 color,
                 page: pageIndex + 1,
                 viewportWidth: pageWidth,
@@ -1088,9 +1111,9 @@ function extractNativeHighlights(pdfDocument) {
                         text: noteText,
                         author: noteAuthor || undefined,
                         modifiedAt: noteModifiedAt || undefined,
-                        subject: noteSubject || undefined
+                        subject: noteSubject || undefined,
                     }
-                    : undefined
+                    : undefined,
             });
         }
     });
@@ -1107,7 +1130,7 @@ function extractFormFields(pdfDocument) {
         pageRefToNumber.set(page.ref.toString(), index + 1);
         pageDimensions.set(index + 1, {
             width: page.getWidth(),
-            height: page.getHeight()
+            height: page.getHeight(),
         });
     });
     const fields = [];
@@ -1125,7 +1148,7 @@ function extractFormFields(pdfDocument) {
                 multiline: field.isMultiline(),
                 maxLength: field.getMaxLength() ?? null,
                 semantic: detectTextFieldSemantic(field.getName()),
-                widgets
+                widgets,
             });
             continue;
         }
@@ -1135,7 +1158,7 @@ function extractFormFields(pdfDocument) {
                 type: 'checkbox',
                 readOnly: field.isReadOnly(),
                 checked: field.isChecked(),
-                widgets
+                widgets,
             });
             continue;
         }
@@ -1143,7 +1166,7 @@ function extractFormFields(pdfDocument) {
             const options = field.getOptions();
             const widgetsWithOptions = widgets.map((widget, index) => ({
                 ...widget,
-                option: options[index] ?? widget.option
+                option: options[index] ?? widget.option,
             }));
             fields.push({
                 name: field.getName(),
@@ -1151,7 +1174,7 @@ function extractFormFields(pdfDocument) {
                 readOnly: field.isReadOnly(),
                 value: field.getSelected() ?? null,
                 options,
-                widgets: widgetsWithOptions
+                widgets: widgetsWithOptions,
             });
             continue;
         }
@@ -1164,7 +1187,7 @@ function extractFormFields(pdfDocument) {
                 options: field.getOptions(),
                 editable: field.isEditable(),
                 multiSelect: field.isMultiselect(),
-                widgets
+                widgets,
             });
             continue;
         }
@@ -1176,7 +1199,7 @@ function extractFormFields(pdfDocument) {
                 value: field.getSelected(),
                 options: field.getOptions(),
                 multiSelect: field.isMultiselect(),
-                widgets
+                widgets,
             });
             continue;
         }
@@ -1187,7 +1210,7 @@ function extractFormFields(pdfDocument) {
                 readOnly: field.isReadOnly(),
                 label: extractButtonLabel(field, widgets),
                 action: extractButtonAction(field),
-                widgets
+                widgets,
             });
         }
     }
@@ -1201,7 +1224,8 @@ function extractButtonLabel(field, widgets) {
     if (caption) {
         return caption;
     }
-    return field.getName().split('.').pop() || `Button ${widgets[0]?.page ?? ''}`.trim();
+    return (field.getName().split('.').pop() ||
+        `Button ${widgets[0]?.page ?? ''}`.trim());
 }
 function extractButtonAction(field) {
     const widgets = field.acroField.getWidgets();
@@ -1223,7 +1247,7 @@ function extractButtonAction(field) {
                 ['Fo', 20],
                 ['Bl', 20],
                 ['PV', 15],
-                ['PI', 15]
+                ['PI', 15],
             ]) {
                 const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(pdf_lib_1.PDFName.of(key), pdf_lib_1.PDFDict));
                 if (additionalDescriptor) {
@@ -1248,7 +1272,7 @@ function extractButtonAction(field) {
             ['Fo', 10],
             ['Bl', 10],
             ['PV', 5],
-            ['PI', 5]
+            ['PI', 5],
         ]) {
             const additionalDescriptor = extractActionDescriptor(additionalActions.lookupMaybe(pdf_lib_1.PDFName.of(key), pdf_lib_1.PDFDict));
             if (additionalDescriptor) {
@@ -1292,7 +1316,7 @@ function extractActionDescriptor(action) {
             type: 'reset',
             url: null,
             method: null,
-            reason: null
+            reason: null,
         };
     }
     if (subtype !== 'SubmitForm') {
@@ -1303,20 +1327,20 @@ function extractActionDescriptor(action) {
                     type: uri.startsWith('mailto:') ? 'mailto' : 'uri',
                     url: uri,
                     method: null,
-                    reason: null
+                    reason: null,
                 }
                 : {
                     type: 'unsupported',
                     url: null,
                     method: null,
-                    reason: 'URI action has no usable target.'
+                    reason: 'URI action has no usable target.',
                 };
         }
         return {
             type: 'unsupported',
             url: null,
             method: null,
-            reason: `Unsupported PDF button action: ${subtype}`
+            reason: `Unsupported PDF button action: ${subtype}`,
         };
     }
     const target = action.get(pdf_lib_1.PDFName.of('F'));
@@ -1326,7 +1350,7 @@ function extractActionDescriptor(action) {
             type: 'unsupported',
             url: null,
             method: null,
-            reason: 'Submit button has no usable target URL.'
+            reason: 'Submit button has no usable target URL.',
         };
     }
     if (url.startsWith('mailto:')) {
@@ -1334,7 +1358,7 @@ function extractActionDescriptor(action) {
             type: 'mailto',
             url,
             method: null,
-            reason: null
+            reason: null,
         };
     }
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -1342,14 +1366,14 @@ function extractActionDescriptor(action) {
             type: 'submit',
             url,
             method: extractSubmitMethod(action),
-            reason: null
+            reason: null,
         };
     }
     return {
         type: 'unsupported',
         url,
         method: null,
-        reason: `Unsupported submit target: ${url}`
+        reason: `Unsupported submit target: ${url}`,
     };
 }
 function extractSubmitTargetUrl(value) {
@@ -1406,7 +1430,7 @@ function extractFieldWidgets(pdfDocument, widgets, pageRefToNumber, pageDimensio
             y: pageSize.height - rect.y - rect.height,
             width: rect.width,
             height: rect.height,
-            option: widget.getOnValue()?.decodeText()
+            option: widget.getOnValue()?.decodeText(),
         });
     });
     return normalizedWidgets;
@@ -1432,13 +1456,19 @@ function findWidgetPageNumber(pdfDocument, widget, pageRefToNumber) {
 }
 function detectTextFieldSemantic(name) {
     const normalized = name.toLowerCase();
-    if (normalized.includes(':signer:fullname') || normalized.includes('fullname') || normalized.includes('full_name')) {
+    if (normalized.includes(':signer:fullname') ||
+        normalized.includes('fullname') ||
+        normalized.includes('full_name')) {
         return 'fullName';
     }
-    if (normalized.includes(':signer:email') || normalized.includes('email') || normalized.includes('e-mail')) {
+    if (normalized.includes(':signer:email') ||
+        normalized.includes('email') ||
+        normalized.includes('e-mail')) {
         return 'email';
     }
-    if (normalized.includes(':signer:date') || normalized.endsWith('date') || normalized.includes('_date')) {
+    if (normalized.includes(':signer:date') ||
+        normalized.endsWith('date') ||
+        normalized.includes('_date')) {
         return 'date';
     }
     return 'generic';
@@ -1456,7 +1486,7 @@ function mergeComments(studioComments, nativeComments) {
         if (existing) {
             merged.set(nativeComment.id, {
                 ...existing,
-                text: nativeComment.text
+                text: nativeComment.text,
             });
             continue;
         }
@@ -1490,7 +1520,9 @@ function extractHighlightRects(annotation, pageHeight) {
         const points = [];
         for (let offset = 0; offset < 8; offset += 2) {
             const x = quadPoints.lookupMaybe(index + offset, pdf_lib_1.PDFNumber)?.asNumber();
-            const y = quadPoints.lookupMaybe(index + offset + 1, pdf_lib_1.PDFNumber)?.asNumber();
+            const y = quadPoints
+                .lookupMaybe(index + offset + 1, pdf_lib_1.PDFNumber)
+                ?.asNumber();
             if (typeof x !== 'number' || typeof y !== 'number') {
                 points.length = 0;
                 break;
@@ -1508,13 +1540,15 @@ function extractHighlightRects(annotation, pageHeight) {
             x: minX,
             y: pageHeight - maxY,
             width: maxX - minX,
-            height: maxY - minY
+            height: maxY - minY,
         });
     }
     return rects.length ? rects : null;
 }
 function extractRectFallback(annotation, pageHeight) {
-    const rect = annotation.lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)?.asRectangle();
+    const rect = annotation
+        .lookupMaybe(pdf_lib_1.PDFName.of('Rect'), pdf_lib_1.PDFArray)
+        ?.asRectangle();
     if (!rect) {
         return null;
     }
@@ -1523,8 +1557,8 @@ function extractRectFallback(annotation, pageHeight) {
             x: rect.x,
             y: pageHeight - rect.y - rect.height,
             width: rect.width,
-            height: rect.height
-        }
+            height: rect.height,
+        },
     ];
 }
 function decodeNativeCommentText(annotation) {
@@ -1538,7 +1572,10 @@ function decodeNativeCommentText(annotation) {
         return subject;
     }
     // Adobe often stores comment text in simple rich-text markup.
-    return richText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return richText
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 function decodePdfDate(value) {
     const raw = decodePdfText(value).trim();
@@ -1566,11 +1603,22 @@ function decodeStudioCommentPayload(value) {
             return null;
         }
         return {
-            id: typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : crypto.randomUUID(),
-            author: typeof parsed.author === 'string' && parsed.author.trim() ? parsed.author.trim().slice(0, 120) : undefined,
-            modifiedAt: typeof parsed.modifiedAt === 'string' && parsed.modifiedAt.trim() ? parsed.modifiedAt.trim() : undefined,
-            color: typeof parsed.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(parsed.color) ? parsed.color : '#f97316',
-            viewportWidth: typeof parsed.viewportWidth === 'number' && Number.isFinite(parsed.viewportWidth) && parsed.viewportWidth > 0
+            id: typeof parsed.id === 'string' && parsed.id.trim()
+                ? parsed.id.trim()
+                : crypto.randomUUID(),
+            author: typeof parsed.author === 'string' && parsed.author.trim()
+                ? parsed.author.trim().slice(0, 120)
+                : undefined,
+            modifiedAt: typeof parsed.modifiedAt === 'string' && parsed.modifiedAt.trim()
+                ? parsed.modifiedAt.trim()
+                : undefined,
+            color: typeof parsed.color === 'string' &&
+                /^#[0-9a-fA-F]{6}$/.test(parsed.color)
+                ? parsed.color
+                : '#f97316',
+            viewportWidth: typeof parsed.viewportWidth === 'number' &&
+                Number.isFinite(parsed.viewportWidth) &&
+                parsed.viewportWidth > 0
                 ? parsed.viewportWidth
                 : 1,
             viewportHeight: typeof parsed.viewportHeight === 'number' &&
@@ -1578,7 +1626,7 @@ function decodeStudioCommentPayload(value) {
                 parsed.viewportHeight > 0
                 ? parsed.viewportHeight
                 : 1,
-            rects
+            rects,
         };
     }
     catch {
@@ -1589,7 +1637,9 @@ function colorArrayToHex(colorArray) {
     const components = colorArray
         .asArray()
         .slice(0, 3)
-        .map((component) => ('asNumber' in component && typeof component.asNumber === 'function' ? component.asNumber() : 0));
+        .map((component) => 'asNumber' in component && typeof component.asNumber === 'function'
+        ? component.asNumber()
+        : 0);
     const [red = 0.976, green = 0.451, blue = 0.086] = components.map((component) => Math.round(clamp(component, 0, 1) * 255));
     return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue
         .toString(16)
@@ -1606,9 +1656,18 @@ function sanitizeRectsForCommentPayload(value) {
         }
         const x = typeof rect.x === 'number' && Number.isFinite(rect.x) ? rect.x : null;
         const y = typeof rect.y === 'number' && Number.isFinite(rect.y) ? rect.y : null;
-        const width = typeof rect.width === 'number' && Number.isFinite(rect.width) ? rect.width : null;
-        const height = typeof rect.height === 'number' && Number.isFinite(rect.height) ? rect.height : null;
-        if (x === null || y === null || width === null || height === null || width <= 0 || height <= 0) {
+        const width = typeof rect.width === 'number' && Number.isFinite(rect.width)
+            ? rect.width
+            : null;
+        const height = typeof rect.height === 'number' && Number.isFinite(rect.height)
+            ? rect.height
+            : null;
+        if (x === null ||
+            y === null ||
+            width === null ||
+            height === null ||
+            width <= 0 ||
+            height <= 0) {
             return null;
         }
         return { x, y, width, height };

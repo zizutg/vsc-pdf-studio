@@ -50,7 +50,7 @@ function activate(context) {
             prompt: 'Enter the author name to write into native PDF comments. Leave empty to use the OS username fallback.',
             placeHolder: currentAuthor || 'Leave empty to use the OS username fallback',
             value: currentAuthor,
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
         if (typeof nextAuthor !== 'string') {
             return;
@@ -66,8 +66,8 @@ function activate(context) {
         }
     }), vscode.window.registerCustomEditorProvider(constants_1.PDF_STUDIO_VIEW_TYPE, provider, {
         webviewOptions: {
-            retainContextWhenHidden: true
-        }
+            retainContextWhenHidden: true,
+        },
     }));
 }
 function deactivate() { }

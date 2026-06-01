@@ -24,8 +24,8 @@ export function createDefaultCapabilities(): CapabilitySnapshot {
       outline: true,
       pageNavigation: true,
       copySelection: true,
-      formFill: true
-    }
+      formFill: true,
+    },
   };
 }
 

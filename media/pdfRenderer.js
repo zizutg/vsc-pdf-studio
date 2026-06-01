@@ -1,4 +1,10 @@
-export async function renderPdf(base64, container, zoomConfig, workspaceSize, outlineBase64 = base64) {
+export async function renderPdf(
+  base64,
+  container,
+  zoomConfig,
+  workspaceSize,
+  outlineBase64 = base64
+) {
   const pdfjsLib = globalThis.pdfjsLib;
   const TextLayerBuilder = globalThis.pdfjsViewer?.TextLayerBuilder;
   if (!pdfjsLib?.getDocument || !TextLayerBuilder) {
@@ -8,15 +14,17 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize, ou
   const pdfData = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const loadingTask = pdfjsLib.getDocument({
     data: pdfData,
-    disableWorker: true
+    disableWorker: true,
   });
   const pdf = await loadingTask.promise;
   let outlinePdf = pdf;
   if (outlineBase64 && outlineBase64 !== base64) {
-    const outlinePdfData = Uint8Array.from(atob(outlineBase64), (char) => char.charCodeAt(0));
+    const outlinePdfData = Uint8Array.from(atob(outlineBase64), (char) =>
+      char.charCodeAt(0)
+    );
     const outlineLoadingTask = pdfjsLib.getDocument({
       data: outlinePdfData,
-      disableWorker: true
+      disableWorker: true,
     });
     outlinePdf = await outlineLoadingTask.promise;
   }
@@ -25,14 +33,14 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize, ou
   const outline = await buildOutline(outlinePdf);
   const resolvedScale = resolveScale(zoomConfig, workspaceSize, {
     width: baseViewport.width,
-    height: baseViewport.height
+    height: baseViewport.height,
   });
   const renderOutputScale = resolveRenderOutputScale({
     pageCount: pdf.numPages,
     pageWidth: baseViewport.width,
     pageHeight: baseViewport.height,
     zoomScale: resolvedScale,
-    devicePixelRatio: globalThis.devicePixelRatio || 1
+    devicePixelRatio: globalThis.devicePixelRatio || 1,
   });
   const thumbnailWidth = pdf.numPages > 80 ? 64 : pdf.numPages > 40 ? 76 : 92;
   const pages = [];
@@ -77,23 +85,44 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize, ou
     textLayer.style.width = `${unscaledViewport.width}px`;
     textLayer.style.height = `${unscaledViewport.height}px`;
 
-    pageShell.append(pdfCanvas, highlightLayer, searchLayer, textLayer, formLayer, commentLayer, drawingCanvas);
+    pageShell.append(
+      pdfCanvas,
+      highlightLayer,
+      searchLayer,
+      textLayer,
+      formLayer,
+      commentLayer,
+      drawingCanvas
+    );
     fragment.append(pageShell);
 
     const pdfContext = pdfCanvas.getContext('2d');
     await page.render({
       canvasContext: pdfContext,
       viewport,
-      transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+      transform:
+        outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0],
     }).promise;
 
     const thumbnailCanvas = document.createElement('canvas');
     const thumbnailScale = thumbnailWidth / Math.max(viewport.width, 1);
-    thumbnailCanvas.width = Math.max(1, Math.round(viewport.width * thumbnailScale));
-    thumbnailCanvas.height = Math.max(1, Math.round(viewport.height * thumbnailScale));
+    thumbnailCanvas.width = Math.max(
+      1,
+      Math.round(viewport.width * thumbnailScale)
+    );
+    thumbnailCanvas.height = Math.max(
+      1,
+      Math.round(viewport.height * thumbnailScale)
+    );
     thumbnailCanvas
       .getContext('2d')
-      .drawImage(pdfCanvas, 0, 0, thumbnailCanvas.width, thumbnailCanvas.height);
+      .drawImage(
+        pdfCanvas,
+        0,
+        0,
+        thumbnailCanvas.width,
+        thumbnailCanvas.height
+      );
 
     const textContentSource = await page.getTextContent();
     textLayerBuilder.setTextContentSource(textContentSource);
@@ -115,7 +144,7 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize, ou
       width: viewport.width,
       height: viewport.height,
       pdfWidth: unscaledViewport.width,
-      pdfHeight: unscaledViewport.height
+      pdfHeight: unscaledViewport.height,
     });
   }
 
@@ -123,14 +152,25 @@ export async function renderPdf(base64, container, zoomConfig, workspaceSize, ou
     pages,
     outline,
     resolvedScale,
-    fragment
+    fragment,
   };
 }
 
-function resolveRenderOutputScale({ pageCount, pageWidth, pageHeight, zoomScale, devicePixelRatio }) {
-  const pagePixelArea = Math.max(1, pageWidth * pageHeight * zoomScale * zoomScale);
+function resolveRenderOutputScale({
+  pageCount,
+  pageWidth,
+  pageHeight,
+  zoomScale,
+  devicePixelRatio,
+}) {
+  const pagePixelArea = Math.max(
+    1,
+    pageWidth * pageHeight * zoomScale * zoomScale
+  );
   const maxTotalPixels = 90_000_000;
-  const safeScale = Math.sqrt(maxTotalPixels / Math.max(pageCount * pagePixelArea, 1));
+  const safeScale = Math.sqrt(
+    maxTotalPixels / Math.max(pageCount * pagePixelArea, 1)
+  );
   return Math.max(0.6, Math.min(devicePixelRatio, safeScale));
 }
 
@@ -172,11 +212,16 @@ async function buildOutline(pdf) {
     if (Number.isInteger(destinationRef) && destinationRef >= 0) {
       return {
         pageNumber: destinationRef + 1,
-        explicitDestination
+        explicitDestination,
       };
     }
 
-    if (!destinationRef || typeof destinationRef !== 'object' || !('num' in destinationRef) || !('gen' in destinationRef)) {
+    if (
+      !destinationRef ||
+      typeof destinationRef !== 'object' ||
+      !('num' in destinationRef) ||
+      !('gen' in destinationRef)
+    ) {
       return null;
     }
 
@@ -184,7 +229,7 @@ async function buildOutline(pdf) {
     if (pageIndexCache.has(cacheKey)) {
       return {
         pageNumber: pageIndexCache.get(cacheKey),
-        explicitDestination
+        explicitDestination,
       };
     }
 
@@ -194,7 +239,7 @@ async function buildOutline(pdf) {
       pageIndexCache.set(cacheKey, pageNumber);
       return {
         pageNumber,
-        explicitDestination
+        explicitDestination,
       };
     } catch {
       return null;
@@ -239,23 +284,29 @@ async function buildOutline(pdf) {
     for (const item of items) {
       const destinationInfo = await resolveDestination(item.dest);
       const ownPageNumber = destinationInfo?.pageNumber ?? null;
-      const ownTopRatio = ownPageNumber ? await resolveOutlineTopRatio(destinationInfo) : 0;
-      const children = item.items?.length ? await mapItems(item.items, depth + 1) : [];
-      const fallbackPageNumber = children.find((child) => child.pageNumber)?.pageNumber ?? null;
-      const fallbackTopRatio = children.find((child) => child.pageNumber)?.topRatio ?? 0;
+      const ownTopRatio = ownPageNumber
+        ? await resolveOutlineTopRatio(destinationInfo)
+        : 0;
+      const children = item.items?.length
+        ? await mapItems(item.items, depth + 1)
+        : [];
+      const fallbackPageNumber =
+        children.find((child) => child.pageNumber)?.pageNumber ?? null;
+      const fallbackTopRatio =
+        children.find((child) => child.pageNumber)?.topRatio ?? 0;
       const pageNumber = ownPageNumber ?? fallbackPageNumber;
       const topRatio = ownPageNumber ? ownTopRatio : fallbackTopRatio;
 
       const title = item.title?.trim() || `Bookmark ${results.length + 1}`;
       results.push({
-        id: `bookmark-${generatedId += 1}`,
+        id: `bookmark-${(generatedId += 1)}`,
         title,
         pageNumber,
         topRatio,
         depth,
         isExternal: true,
         actionable: Boolean(pageNumber),
-        items: children
+        items: children,
       });
     }
 
@@ -269,7 +320,10 @@ function resolveScale(zoomConfig, workspaceSize, basePageSize) {
   const columnCount = zoomConfig.layout === 'double' ? 2 : 1;
   const interPageGap = columnCount > 1 ? 24 : 0;
   const availableWidth = Math.max(240, workspaceSize.width - 24);
-  const columnWidth = Math.max(120, (availableWidth - interPageGap) / columnCount);
+  const columnWidth = Math.max(
+    120,
+    (availableWidth - interPageGap) / columnCount
+  );
 
   switch (zoomConfig.mode) {
     case 'page-width': {
@@ -278,7 +332,8 @@ function resolveScale(zoomConfig, workspaceSize, basePageSize) {
     case 'page-fit':
     case 'automatic': {
       const fitWidth = columnWidth / Math.max(basePageSize.width, 1);
-      const fitHeight = (workspaceSize.height - 24) / Math.max(basePageSize.height, 1);
+      const fitHeight =
+        (workspaceSize.height - 24) / Math.max(basePageSize.height, 1);
       return Math.max(0.5, Math.min(fitWidth, fitHeight));
     }
     case 'actual-size': {

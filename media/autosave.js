@@ -11,6 +11,6 @@ export function createAutoSaver(callback, delay = 800) {
         timer = null;
         callback(payload);
       }, delay);
-    }
+    },
   };
 }

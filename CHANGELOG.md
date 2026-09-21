@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.7
+
+- Fixed interrupted stylus strokes by separating pen annotation handling from finger scrolling
+- Preserved finger annotation when `Allow Finger Drawing` is enabled while keeping touch panning available when it is disabled
+
+## 0.0.6
+
+- Added pen-first touch annotation controls, including an `Allow Finger Drawing` setting and Command Palette toggle
+- Fixed stack-overflow failures when reopening PDFs with large annotation histories and added automatic migration to compressed annotation storage
+- Expanded comment visibility controls to include supported comments and note-bearing markup imported from other PDF editors
+- Improved editor reliability through modularized webview features, stricter payload validation, linting, formatting, and regression tests
+
 ## 0.0.5
 
 - Added view, edit, and delete support for note-bearing highlights, underlines, and strikeouts imported from other PDF editors
@@ -17,8 +29,7 @@
 
 ## 0.0.3
 
-- Reduced packaged extension size by trimming shipped runtime dependency files without changing functionality
-- Collapsed open comment views and cleared empty comment composers when switching to other tools
+- Reduced packaged extension size by trimming shipped runtime dependency files without changing functionality- Collapsed open comment views and cleared empty comment composers when switching to other tools
 
 ## 0.0.2
 

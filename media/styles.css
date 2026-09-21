@@ -34,15 +34,133 @@ body {
 }
 
 .content-shell {
+  position: relative;
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: var(--navigation-width, 240px) minmax(0, 1fr) var(
+      --tools-width,
+      0px
+    );
   overflow: hidden;
 }
 
 .content-shell.is-sidebar-collapsed {
-  grid-template-columns: minmax(0, 1fr);
+  --navigation-width: 0px;
+}
+
+.content-shell.is-tools-open {
+  --tools-width: 240px;
+}
+
+.content-shell > .sidebar {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.content-shell > .workspace {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.tools-panel {
+  grid-column: 3;
+  grid-row: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 12px;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  z-index: 8;
+}
+
+.tools-panel[hidden],
+.tools-panel [hidden] {
+  display: none;
+}
+
+.tools-panel-header,
+.tools-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tools-panel-header {
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.tools-panel section {
+  border-top: 1px solid var(--border);
+  padding: 16px 0;
+}
+
+.tools-field {
+  margin-top: 14px;
+  font-size: 12px;
+}
+
+.tools-field:first-child {
+  margin-top: 0;
+}
+
+.tools-panel select,
+.tools-panel input[type='color'],
+#tools-panel-close {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tools-panel select {
+  padding: 4px 8px;
+}
+
+.tools-panel input[type='color'] {
+  width: 48px;
+  padding: 2px;
+}
+
+#tools-panel-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  padding: 5px;
+}
+
+#tools-panel-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tools-panel .color-swatch {
+  width: 28px;
+  height: 28px;
+}
+
+.tools-panel :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1020px) {
+  .content-shell.is-tools-open {
+    --tools-width: 0px;
+  }
+
+  .tools-panel {
+    position: absolute;
+    grid-column: auto;
+    grid-row: auto;
+    inset: 0 0 0 auto;
+    width: min(240px, 100%);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.2);
+  }
 }
 
 .toolbar {
@@ -186,11 +304,6 @@ body {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.menu-wrap {
-  position: relative;
-  margin-left: auto;
-}
-
 .search-wrap {
   position: relative;
 }
@@ -250,30 +363,6 @@ body {
   cursor: default;
 }
 
-.menu-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  min-width: 180px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
-  display: grid;
-  gap: 10px;
-  z-index: 20;
-}
-
-.menu-panel[hidden] {
-  display: none;
-}
-
-.menu-panel label {
-  display: grid;
-  gap: 6px;
-}
-
 .mode-toggle {
   display: flex;
   align-items: center;
@@ -282,29 +371,6 @@ body {
 
 .mode-wrap {
   position: relative;
-}
-
-.color-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: var(--popover-left, 0px);
-  transform: translateX(-50%);
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
-  z-index: 24;
-}
-
-.color-popover[hidden] {
-  display: none;
-}
-
-.comment-popover-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .mode-button.is-active,
@@ -503,6 +569,29 @@ body {
 .form-layer {
   pointer-events: none;
   z-index: 4;
+}
+
+.pdf-link-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.pdf-link {
+  position: absolute;
+  pointer-events: none;
+}
+
+.pdf-link:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: 1px;
+}
+
+.page-shell.has-pdf-link-hover,
+.page-shell.has-pdf-link-hover .text-layer,
+.page-shell.has-pdf-link-hover .text-layer span {
+  cursor: pointer;
 }
 
 .form-layer.is-disabled .pdf-form-control {

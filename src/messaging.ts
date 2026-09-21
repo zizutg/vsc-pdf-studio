@@ -52,6 +52,12 @@ export type WebviewToExtensionMessage =
       type: 'ready';
     }
   | {
+      type: 'openExternalLink';
+      payload: {
+        url: string;
+      };
+    }
+  | {
       type: 'documentChanged';
       payload: {
         annotations: AnnotationDocument;

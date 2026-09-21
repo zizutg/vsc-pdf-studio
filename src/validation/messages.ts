@@ -1,6 +1,7 @@
 import type { WebviewToExtensionMessage } from '../messaging';
 import { sanitizeAnnotationDocument } from './annotationDocument';
 import { sanitizeFormFields } from './formFields';
+import { parseExternalLink } from './links';
 
 export function parseWebviewMessage(
   input: unknown
@@ -11,6 +12,11 @@ export function parseWebviewMessage(
 
   if (input.type === 'ready') {
     return { type: 'ready' };
+  }
+
+  if (input.type === 'openExternalLink' && isObject(input.payload)) {
+    const url = parseExternalLink(input.payload.url);
+    return url ? { type: 'openExternalLink', payload: { url } } : null;
   }
 
   if (input.type === 'documentChanged' && isObject(input.payload)) {

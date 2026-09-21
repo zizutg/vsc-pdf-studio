@@ -78,6 +78,20 @@ class PdfEditorProvider {
                     await this.postInitialState(document.uri, webviewPanel.webview);
                     break;
                 }
+                case 'openExternalLink': {
+                    try {
+                        const opened = await vscode.env.openExternal(vscode.Uri.parse(message.payload.url));
+                        if (!opened) {
+                            throw new Error('The PDF link could not be opened.');
+                        }
+                    }
+                    catch (error) {
+                        void vscode.window.showWarningMessage(error instanceof Error
+                            ? error.message
+                            : 'The PDF link could not be opened.');
+                    }
+                    break;
+                }
                 case 'documentChanged': {
                     await this.handleDocumentSave(document.uri, message.payload.annotations, message.payload.formFields, webviewPanel.webview);
                     break;

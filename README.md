@@ -12,6 +12,7 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 - Freehand annotation with color and width controls
 - Text selection, inline highlight, and comment workflows
 - Search, page navigation, and PDF outline/bookmark navigation
+- Clickable PDF hyperlinks in Select mode, including websites, email links, and destinations within the document
 - Undo and redo support
 - Auto-save directly back into the PDF file
 
@@ -23,6 +24,10 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 
 ## Settings
 
+- **Opening PDFs:** Documents open at Page Width zoom with both side panels collapsed. Use the toolbar to open either panel or change the zoom.
+
+- **Annotation tools:** Use the rightmost toolbar button to open or collapse the Tools panel. Choose a preset or any custom color; pen size is always available and applies to new pen strokes. The color-chip button also opens the panel. On narrow windows, the panel overlays the PDF instead of reducing its width.
+
 - **Comment author:** Open the Command Palette and run `PDF Studio: Set Comment Author` to set the name written into PDF comments.
 
 - **Finger drawing:** Enable `PDF Studio: Allow Finger Drawing` in VS Code Settings, or run `PDF Studio: Toggle Finger Drawing` from the Command Palette. It is disabled by default so fingers scroll the document while a pen or mouse draws and erases annotations.
@@ -32,6 +37,7 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 - The editor is optimized for review and markup workflows, not full PDF text editing
 - Saved comments/highlights are rendered into the PDF for external-reader compatibility
 - Comment/search/selection behavior depends on the embedded text layer of the source PDF; scanned image PDFs may not behave like text PDFs
+- Clickable links require hyperlink annotations in the PDF; plain URL text is not automatically converted into a link
 
 ## Git Tracking
 

@@ -86,6 +86,10 @@ export function createViewportController({
 
     for (const swatch of colorPaletteEl.querySelectorAll('.color-swatch')) {
       swatch.classList.toggle('is-active', swatch.dataset.color === color);
+      swatch.setAttribute(
+        'aria-pressed',
+        String(swatch.dataset.color === color)
+      );
     }
   }
 
@@ -212,6 +216,33 @@ export function createViewportController({
     }, 150);
   }
 
+  function jumpToPdfLink({ pageNumber, leftRatio, topRatio }) {
+    const pageEntry = state.pageEntries.find(
+      (entry) => entry.pageNumber === pageNumber
+    );
+    if (!pageEntry) {
+      return;
+    }
+    jumpToPage(pageNumber);
+    const pageBounds = pageEntry.pageShell.getBoundingClientRect();
+    const workspaceBounds = workspaceEl.getBoundingClientRect();
+    workspaceEl.scrollTo({
+      top:
+        workspaceEl.scrollTop +
+        pageBounds.top -
+        workspaceBounds.top -
+        workspaceEl.clientTop +
+        topRatio * pageEntry.height,
+      left:
+        workspaceEl.scrollLeft +
+        pageBounds.left -
+        workspaceBounds.left -
+        workspaceEl.clientLeft +
+        leftRatio * pageEntry.width,
+      behavior: 'auto',
+    });
+  }
+
   return {
     updatePageIndicator,
     updateZoomPresetIndicator,
@@ -219,6 +250,7 @@ export function createViewportController({
     setActiveColor,
     getCommentOverlayPlacement,
     jumpToPage,
+    jumpToPdfLink,
     getPageScrollTop,
   };
 }

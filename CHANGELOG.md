@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- PDFs now open at Page Width zoom with both navigation and Tools panels collapsed, including documents with bookmarks
+- Replaced color and pen-width dropdowns with a compact, collapsible right Tools panel, always-visible pen size, and an overlay layout for narrow windows
+- Added clickable PDF links in Select mode for websites, email addresses, and internal page destinations
+
 ## 0.0.7
 
 - Fixed interrupted stylus strokes by separating pen annotation handling from finger scrolling

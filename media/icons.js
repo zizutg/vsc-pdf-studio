@@ -68,6 +68,9 @@ export const icons = {
     '<path d="M6 4h12a1 1 0 0 1 1 1v16l-7-4-7 4V5a1 1 0 0 1 1-1Z" />'
   ),
   sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
+  sidebarRight: createLucideIcon(
+    '<path d="M4 5h16v14H4z" /><path d="M15 5v14" />'
+  ),
   chevronLeft: createLucideIcon(
     '<path d="m15 18-6-6 6-6" />',
     'stroke-width="2.25"'

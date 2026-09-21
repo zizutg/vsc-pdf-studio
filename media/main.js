@@ -25,6 +25,7 @@ import {
 } from './historyState.js';
 import { icons } from './icons.js';
 import { renderPdf } from './pdfRenderer.js';
+import { attachPdfLinks } from './pdfLinks.js';
 import {
   escapeHtml,
   escapeRegExp,
@@ -36,6 +37,7 @@ import {
 import { createSearchController } from './search.js';
 import { createSelectionController } from './selection.js';
 import { createSidebarController } from './sidebar.js';
+import { createToolsPanelController, toolsPanelMarkup } from './toolsPanel.js';
 import { createViewportController } from './viewport.js';
 
 const vscode = acquireVsCodeApi();
@@ -47,7 +49,7 @@ const state = {
   pdfBase64: '',
   outlinePdfBase64: '',
   pageEntries: [],
-  zoomMode: 'automatic',
+  zoomMode: 'page-width',
   zoom: 1.25,
   renderedZoom: 1.25,
   pageLayout: 'single',
@@ -55,7 +57,6 @@ const state = {
   totalPages: 0,
   color: '#ef4444',
   mode: 'select',
-  menuOpen: false,
   pageJumpInProgress: false,
   zoomContext: null,
   gestureZoomBase: null,
@@ -89,7 +90,6 @@ const state = {
   searchQuery: '',
   searchMatches: [],
   activeSearchMatchIndex: -1,
-  colorPopoverOwner: null,
 };
 
 const MAX_HISTORY_ENTRIES = 30;
@@ -111,7 +111,7 @@ app.innerHTML = `
             <option value="automatic">Auto</option>
             <option value="actual-size">Actual Size</option>
             <option value="page-fit">Page Fit</option>
-            <option value="page-width">Page Width</option>
+            <option value="page-width" selected>Page Width</option>
             <option value="0.5">50%</option>
             <option value="0.75">75%</option>
             <option value="1">100%</option>
@@ -135,20 +135,9 @@ app.innerHTML = `
         </div>
         <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
         <button type="button" id="comment-views-toggle" aria-label="Show all comments" title="Show all comments">${icons.commentsExpanded}</button>
-        <button type="button" id="color-button" aria-label="Annotation color" title="Annotation color">
+        <button type="button" id="color-button" aria-label="Annotation color" title="Annotation color" aria-controls="tools-panel" aria-expanded="false">
           <span class="toolbar-color-chip" id="color-chip" aria-hidden="true"></span>
         </button>
-        <div class="color-popover" id="color-popover" hidden>
-          <div class="comment-popover-controls">
-            <div class="color-palette" id="color-palette">
-              <button type="button" class="color-swatch is-active" data-color="#ef4444" style="--swatch:#ef4444;" aria-label="Red"></button>
-              <button type="button" class="color-swatch" data-color="#eab308" style="--swatch:#eab308;" aria-label="Yellow"></button>
-              <button type="button" class="color-swatch" data-color="#f97316" style="--swatch:#f97316;" aria-label="Orange"></button>
-              <button type="button" class="color-swatch" data-color="#22c55e" style="--swatch:#22c55e;" aria-label="Green"></button>
-              <button type="button" class="color-swatch" data-color="#3b82f6" style="--swatch:#3b82f6;" aria-label="Blue"></button>
-            </div>
-          </div>
-        </div>
         <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
         <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
         <div class="search-wrap">
@@ -164,29 +153,11 @@ app.innerHTML = `
       </div>
     </div>
     <div class="toolbar-end">
-      <div class="menu-wrap">
-        <button type="button" id="menu-button" aria-label="More tools" title="More tools">${icons.menu}</button>
-        <div class="menu-panel" id="menu-panel" hidden>
-          <label>
-            Color
-            <input id="stroke-color" type="color" value="#ef4444" />
-          </label>
-          <label>
-            Width
-            <select id="stroke-width">
-              <option value="1">1 pt</option>
-              <option value="2">2 pt</option>
-              <option value="3" selected>3 pt</option>
-              <option value="4">4 pt</option>
-              <option value="6">6 pt</option>
-            </select>
-          </label>
-        </div>
-      </div>
+      <button type="button" id="menu-button" aria-label="Toggle tools panel" title="Toggle tools panel" aria-controls="tools-panel" aria-expanded="false">${icons.sidebarRight}</button>
     </div>
   </div>
-  <div class="content-shell" id="content-shell">
-    <aside class="sidebar" id="sidebar">
+  <div class="content-shell is-sidebar-collapsed" id="content-shell">
+    <aside class="sidebar" id="sidebar" hidden>
       <div class="sidebar-tabs" id="sidebar-tabs">
         <button type="button" class="sidebar-tab is-active" data-tab="outline" id="outline-tab" hidden>Bookmarks</button>
         <button type="button" class="sidebar-tab" data-tab="pages">Pages</button>
@@ -202,11 +173,11 @@ app.innerHTML = `
       <div id="pages"></div>
       <div class="empty-state" id="message-box" hidden></div>
     </div>
+    ${toolsPanelMarkup(icons.close)}
   </div>
 `;
 
 const contentShellEl = document.querySelector('#content-shell');
-const toolbarEl = document.querySelector('.toolbar');
 const sidebarToggleEl = document.querySelector('#sidebar-toggle');
 const sidebarEl = document.querySelector('#sidebar');
 const sidebarTabsEl = document.querySelector('#sidebar-tabs');
@@ -222,7 +193,6 @@ const zoomOutEl = document.querySelector('#zoom-out');
 const zoomPresetEl = document.querySelector('#zoom-preset');
 const layoutToggleEl = document.querySelector('#layout-toggle');
 const modeToggleEl = document.querySelector('#mode-toggle');
-const colorPopoverEl = document.querySelector('#color-popover');
 const undoButtonEl = document.querySelector('#undo-button');
 const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
@@ -237,7 +207,7 @@ const searchPrevEl = document.querySelector('#search-prev');
 const searchNextEl = document.querySelector('#search-next');
 const searchCloseEl = document.querySelector('#search-close');
 const menuButtonEl = document.querySelector('#menu-button');
-const menuPanelEl = document.querySelector('#menu-panel');
+const toolsPanelEl = document.querySelector('#tools-panel');
 const colorPaletteEl = document.querySelector('#color-palette');
 const strokeColorEl = document.querySelector('#stroke-color');
 const strokeWidthEl = document.querySelector('#stroke-width');
@@ -381,18 +351,24 @@ viewportController = createViewportController({
     sidebarController.expandOutlinePathForPage(...args),
 });
 
+const toolsPanelController = createToolsPanelController({
+  panelEl: toolsPanelEl,
+  toggleEl: menuButtonEl,
+  colorButtonEl,
+  contentShellEl,
+  workspaceEl,
+  onLayoutChange: scheduleResponsiveRerender,
+});
+toolsPanelController.updateMode(state.mode);
+
 interactionController = createInteractionController({
   state,
-  toolbarEl,
-  colorPopoverEl,
-  colorButtonEl,
+  updateToolSettings: toolsPanelController.updateMode,
   modeToggleEl,
   commentButtonEl,
   commentViewsToggleEl,
   pagesEl,
   layoutToggleEl,
-  menuPanelEl,
-  menuButtonEl,
   icons,
   updateSidebarActiveState: (...args) =>
     sidebarController.updateSidebarActiveState(...args),
@@ -413,13 +389,11 @@ const {
   getPageScrollTop,
 } = viewportController;
 const {
-  setColorPopoverOpen,
   updateCommentViewsToggleState,
   setMode,
   updateInteractionMode,
   updateHistoryState,
   updateLayoutState,
-  setMenuOpen,
   setPageLayout,
   isTextEditingTarget,
 } = interactionController;
@@ -606,6 +580,20 @@ async function rerenderPages() {
   state.renderedZoom = resolvedScale;
   state.totalPages = state.pageEntries.length;
   state.currentPage = Math.min(state.currentPage, state.totalPages || 1);
+
+  for (const pageEntry of state.pageEntries) {
+    if (pageEntry.links.length) {
+      pageEntry.linkController = attachPdfLinks(pageEntry, {
+        openExternal: (url) =>
+          vscode.postMessage({
+            type: 'openExternalLink',
+            payload: { url },
+          }),
+        navigate: (destination) =>
+          viewportController.jumpToPdfLink(destination),
+      });
+    }
+  }
 
   drawingLayer = createDrawingLayer(state.pageEntries, {
     getColor: () => state.color,
@@ -1083,14 +1071,6 @@ commentViewsToggleEl.addEventListener('click', () => {
   renderComments();
 });
 
-colorButtonEl.addEventListener('click', () => {
-  setColorPopoverOpen(colorPopoverEl.hidden);
-});
-
-menuButtonEl.addEventListener('click', () => {
-  setMenuOpen(!state.menuOpen);
-});
-
 colorPaletteEl.addEventListener('click', (event) => {
   const swatch = event.target.closest('.color-swatch');
   if (!swatch) {
@@ -1105,10 +1085,6 @@ strokeColorEl.addEventListener('input', () => {
 });
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('#color-button, #color-popover')) {
-    setColorPopoverOpen(false);
-  }
-
   if (!event.target.closest('.selection-action')) {
     state.selectionAction = null;
     renderSelectionAction();
@@ -1127,19 +1103,6 @@ window.addEventListener('click', (event) => {
   if (state.searchOpen && !event.target.closest('.search-wrap')) {
     setSearchOpen(false);
   }
-
-  if (menuPanelEl.hidden) {
-    return;
-  }
-
-  if (
-    menuPanelEl.contains(event.target) ||
-    menuButtonEl.contains(event.target)
-  ) {
-    return;
-  }
-
-  setMenuOpen(false);
 });
 
 window.addEventListener('mouseup', () => {
@@ -1256,22 +1219,21 @@ window.addEventListener('message', async (event) => {
     state.searchMatches = [];
     state.activeSearchMatchIndex = -1;
     state.pageLayout = 'single';
+    state.zoomMode = 'page-width';
+    state.zoomContext = null;
     state.mode = 'select';
     state.showAllComments = false;
     state.lastButtonActivation = null;
-    setColorPopoverOpen(false);
     searchInputEl.value = '';
     updateSearchUI();
     setSidebarOpen(false);
+    toolsPanelController.setOpen(false, { notifyLayout: false });
     setSidebarTab('outline');
     updateLayoutState();
     updateCommentViewsToggleState();
 
     try {
       await rerenderPages();
-      if (state.outline.length) {
-        setSidebarOpen(true);
-      }
       messageBoxEl.hidden = true;
     } catch (error) {
       messageBoxEl.hidden = false;

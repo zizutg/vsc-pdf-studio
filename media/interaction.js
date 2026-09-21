@@ -1,15 +1,11 @@
 export function createInteractionController({
   state,
-  toolbarEl,
-  colorPopoverEl,
-  colorButtonEl,
+  updateToolSettings,
   modeToggleEl,
   commentButtonEl,
   commentViewsToggleEl,
   pagesEl,
   layoutToggleEl,
-  menuPanelEl,
-  menuButtonEl,
   icons,
   updateSidebarActiveState,
   submitCommentComposer,
@@ -18,28 +14,6 @@ export function createInteractionController({
   scheduleZoomRerender,
   createZoomContext,
 }) {
-  function setColorPopoverOpen(nextOpen) {
-    const shouldOpen = Boolean(nextOpen);
-    state.colorPopoverOwner = shouldOpen ? 'color' : null;
-    colorPopoverEl.hidden = !shouldOpen;
-    colorButtonEl.classList.toggle('is-active', shouldOpen);
-
-    if (!shouldOpen) {
-      colorPopoverEl.style.removeProperty('--popover-left');
-      return;
-    }
-
-    const toolbarRect = toolbarEl.getBoundingClientRect();
-    const buttonRect = colorButtonEl?.getBoundingClientRect();
-    if (!buttonRect) {
-      colorPopoverEl.style.setProperty('--popover-left', '0px');
-      return;
-    }
-
-    const left = buttonRect.left - toolbarRect.left + buttonRect.width / 2;
-    colorPopoverEl.style.setProperty('--popover-left', `${left}px`);
-  }
-
   function updateCommentViewsToggleState() {
     commentViewsToggleEl.classList.toggle('is-active', state.showAllComments);
     commentViewsToggleEl.setAttribute(
@@ -84,11 +58,11 @@ export function createInteractionController({
   function setMode(mode) {
     collapseCommentsForModeChange(mode);
     state.mode = mode;
-    setColorPopoverOpen(false);
     updateInteractionMode();
   }
 
   function updateInteractionMode() {
+    updateToolSettings(state.mode);
     for (const button of modeToggleEl.querySelectorAll('.mode-button')) {
       button.classList.toggle('is-active', button.dataset.mode === state.mode);
     }
@@ -100,6 +74,7 @@ export function createInteractionController({
         state.mode === 'highlight' ||
         state.mode === 'comment';
       const formInteractionEnabled = state.mode === 'select';
+      pageEntry.linkController?.setEnabled(state.mode === 'select');
       pageEntry.drawingCanvas.style.pointerEvents = textInteractionEnabled
         ? 'none'
         : 'auto';
@@ -152,12 +127,6 @@ export function createInteractionController({
     layoutToggleEl.setAttribute('title', nextLabel);
   }
 
-  function setMenuOpen(nextOpen) {
-    state.menuOpen = nextOpen;
-    menuPanelEl.hidden = !nextOpen;
-    menuButtonEl.classList.toggle('is-active', nextOpen);
-  }
-
   function setPageLayout(nextLayout) {
     if (state.pageLayout === nextLayout) {
       return;
@@ -185,14 +154,12 @@ export function createInteractionController({
   }
 
   return {
-    setColorPopoverOpen,
     updateCommentViewsToggleState,
     collapseCommentsForModeChange,
     setMode,
     updateInteractionMode,
     updateHistoryState,
     updateLayoutState,
-    setMenuOpen,
     setPageLayout,
     isTextEditingTarget,
   };

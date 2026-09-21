@@ -1,3 +1,5 @@
+import { createPdfLinkReader } from './pdfLinks.js';
+
 export async function renderPdf(
   base64,
   container,
@@ -31,6 +33,7 @@ export async function renderPdf(
   const firstPage = await pdf.getPage(1);
   const baseViewport = firstPage.getViewport({ scale: 1 });
   const outline = await buildOutline(outlinePdf);
+  const readPageLinks = createPdfLinkReader(outlinePdf);
   const resolvedScale = resolveScale(zoomConfig, workspaceSize, {
     width: baseViewport.width,
     height: baseViewport.height,
@@ -140,6 +143,7 @@ export async function renderPdf(
       textDivs: textLayerBuilder.textDivs,
       textContentItemsStr: textLayerBuilder.textContentItemsStr,
       drawingCanvas,
+      links: await readPageLinks(pageNumber, viewport),
       thumbnailDataUrl: thumbnailCanvas.toDataURL('image/png'),
       width: viewport.width,
       height: viewport.height,

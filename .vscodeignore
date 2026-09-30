@@ -4,6 +4,8 @@
 .prettierrc.json
 eslint.config.mjs
 tests/**
+benchmarks/**
+.drawing-benchmark-*/**
 out/tests/**
 demo.gif
 demo.png

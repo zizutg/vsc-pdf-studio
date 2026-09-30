@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Simplified newly completed pen strokes within a 0.25 CSS-pixel tolerance to reduce saved points without changing live previews or existing annotations
+- Limited ink redraws after drawing, erasing, undo/redo, and annotation reloads to pages whose strokes changed
+- Made live pen previews incremental: new segments are appended without clearing or replaying existing ink, while completed strokes retain full-path rendering
+- Batched live ink previews to animation frames while retaining pointer samples and final stroke endpoints; canceled stale previews when reloading or replacing pages
 - PDFs now open at Page Width zoom with both navigation and Tools panels collapsed, including documents with bookmarks
 - Replaced color and pen-width dropdowns with a compact, collapsible right Tools panel, always-visible pen size, and an overlay layout for narrow windows
 - Added clickable PDF links in Select mode for websites, email addresses, and internal page destinations

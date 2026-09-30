@@ -61,6 +61,8 @@ This ensures PDFs are tracked as binary assets. It does not create human-readabl
 
 ## Development
 
+For a repeatable live-drawing performance baseline, run `npm run benchmark:drawing` (Node 22+ and Chrome/Chromium required). Set `CHROME_PATH` if Chrome is installed elsewhere. See [the drawing benchmark report](benchmarks/README.md) for methodology, results, and limitations. This developer-only benchmark does not modify user PDFs.
+
 ```bash
 npm install
 npm run compile

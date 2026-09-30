@@ -1,1 +1,3 @@
 node_modules
+.drawing-benchmark-*/
+benchmarks/live-drawing-latest.json

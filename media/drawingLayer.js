@@ -29,8 +29,42 @@ function distanceToSegment(point, start, end) {
   return Math.hypot(point.x - projectionX, point.y - projectionY);
 }
 
-function drawStroke(context, canvas, stroke) {
-  if (!stroke.points.length) {
+export function simplifyStrokePoints(points, tolerance) {
+  if (points.length <= 2 || tolerance <= 0) return points;
+
+  const keep = new Uint8Array(points.length);
+  // Bounded chunks prevent a pathological long stroke from making RDP quadratic.
+  for (let start = 0; start < points.length - 1; start += 512) {
+    const end = Math.min(start + 512, points.length - 1);
+    keep[start] = 1;
+    keep[end] = 1;
+    const ranges = [[start, end]];
+    while (ranges.length) {
+      const [first, last] = ranges.pop();
+      let farthest = -1;
+      let maxDistance = tolerance;
+      for (let index = first + 1; index < last; index++) {
+        const distance = distanceToSegment(
+          points[index],
+          points[first],
+          points[last]
+        );
+        if (distance > maxDistance) {
+          maxDistance = distance;
+          farthest = index;
+        }
+      }
+      if (farthest !== -1) {
+        keep[farthest] = 1;
+        ranges.push([first, farthest], [farthest, last]);
+      }
+    }
+  }
+  return points.filter((_, index) => keep[index]);
+}
+
+function drawStroke(context, canvas, stroke, startIndex = 0) {
+  if (startIndex >= stroke.points.length) {
     return;
   }
 
@@ -43,9 +77,13 @@ function drawStroke(context, canvas, stroke) {
   context.lineCap = 'round';
   context.lineJoin = 'round';
   context.beginPath();
-  context.moveTo(stroke.points[0].x * scaleX, stroke.points[0].y * scaleY);
+  context.moveTo(
+    stroke.points[startIndex].x * scaleX,
+    stroke.points[startIndex].y * scaleY
+  );
 
-  for (const point of stroke.points.slice(1)) {
+  for (let index = startIndex + 1; index < stroke.points.length; index++) {
+    const point = stroke.points[index];
     context.lineTo(point.x * scaleX, point.y * scaleY);
   }
 
@@ -71,12 +109,67 @@ function isTouchInputAllowed(event, options) {
   );
 }
 
+function groupStrokesByPage(strokes) {
+  const pages = new Map();
+  for (const stroke of strokes) {
+    if (!pages.has(stroke.page)) pages.set(stroke.page, []);
+    pages.get(stroke.page).push(stroke);
+  }
+  return pages;
+}
+
+function sameRenderedStrokes(left, right) {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index++) {
+    const a = left[index];
+    const b = right[index];
+    if (
+      a.id !== b.id ||
+      a.color !== b.color ||
+      a.width !== b.width ||
+      a.viewportWidth !== b.viewportWidth ||
+      a.viewportHeight !== b.viewportHeight ||
+      a.points.length !== b.points.length
+    )
+      return false;
+    for (let point = 0; point < a.points.length; point++) {
+      if (
+        a.points[point].x !== b.points[point].x ||
+        a.points[point].y !== b.points[point].y
+      )
+        return false;
+    }
+  }
+  return true;
+}
+
+function changedStrokePages(previous, next) {
+  const oldPages = groupStrokesByPage(previous);
+  const newPages = groupStrokesByPage(next);
+  const changed = new Set();
+  for (const page of new Set([...oldPages.keys(), ...newPages.keys()])) {
+    if (
+      !sameRenderedStrokes(oldPages.get(page) ?? [], newPages.get(page) ?? [])
+    )
+      changed.add(page);
+  }
+  return changed;
+}
+
 export function createDrawingLayer(pageEntries, options) {
+  const entriesByPage = new Map(
+    pageEntries.map((entry) => [entry.pageNumber, entry])
+  );
+  const listeners = new AbortController();
+  const pendingPages = new Set();
+  let frameId = null;
+  let loadEpoch = 0;
   const state = {
     strokes: [],
     currentStroke: null,
     activePointerId: null,
     touchPan: null,
+    previewPointCount: 0,
   };
 
   function redrawPage(pageEntry) {
@@ -96,17 +189,58 @@ export function createDrawingLayer(pageEntries, options) {
 
     if (state.currentStroke?.page === pageEntry.pageNumber) {
       drawStroke(context, pageEntry.drawingCanvas, state.currentStroke);
+      state.previewPointCount = state.currentStroke.points.length;
     }
   }
 
-  function redrawAll() {
-    for (const pageEntry of pageEntries) {
-      redrawPage(pageEntry);
+  function redrawPages(pageNumbers) {
+    cancelPreview();
+    for (const pageNumber of pageNumbers) {
+      const pageEntry = entriesByPage.get(pageNumber);
+      if (pageEntry) redrawPage(pageEntry);
     }
   }
 
-  function toPoint(canvas, event) {
-    const rect = canvas.getBoundingClientRect();
+  function cancelPreview() {
+    if (frameId !== null) {
+      cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+    pendingPages.clear();
+  }
+
+  function schedulePreview(pageEntry) {
+    pendingPages.add(pageEntry);
+    if (frameId !== null) return;
+    frameId = requestAnimationFrame(() => {
+      frameId = null;
+      for (const page of pendingPages) appendPreview(page);
+      pendingPages.clear();
+    });
+  }
+
+  function appendPreview(pageEntry) {
+    const stroke = state.currentStroke;
+    if (
+      !stroke ||
+      stroke.page !== pageEntry.pageNumber ||
+      stroke.points.length < 2 ||
+      state.previewPointCount >= stroke.points.length
+    )
+      return;
+
+    // Opaque pen previews only: one preceding segment preserves the round join
+    // at the batch boundary. Finalization uses the canonical full-stroke path.
+    drawStroke(
+      pageEntry.drawingCanvas.getContext('2d'),
+      pageEntry.drawingCanvas,
+      stroke,
+      Math.max(0, state.previewPointCount - 2)
+    );
+    state.previewPointCount = stroke.points.length;
+  }
+
+  function toPoint(canvas, event, rect = canvas.getBoundingClientRect()) {
     return {
       x: ((event.clientX - rect.left) / rect.width) * canvas.width,
       y: ((event.clientY - rect.top) / rect.height) * canvas.height,
@@ -127,7 +261,20 @@ export function createDrawingLayer(pageEntries, options) {
       return;
     }
 
-    if (state.currentStroke.points.length > 1) {
+    const page = state.currentStroke.page;
+    const epoch = loadEpoch;
+    const committed = state.currentStroke.points.length > 1;
+    if (committed) {
+      const canvas = entriesByPage.get(page)?.drawingCanvas;
+      const rect = canvas?.getBoundingClientRect();
+      const pixelsPerCssPixel =
+        canvas && rect?.width > 0 && rect?.height > 0
+          ? Math.min(canvas.width / rect.width, canvas.height / rect.height)
+          : 1;
+      state.currentStroke.points = simplifyStrokePoints(
+        state.currentStroke.points,
+        0.25 * pixelsPerCssPixel
+      );
       state.strokes.push(state.currentStroke);
       options.onChange(
         structuredClone(state.strokes),
@@ -137,20 +284,28 @@ export function createDrawingLayer(pageEntries, options) {
 
     state.currentStroke = null;
     state.activePointerId = null;
-    redrawAll();
+    state.previewPointCount = 0;
+    if (loadEpoch === epoch) {
+      if (committed) redrawPages([page]);
+      else cancelPreview();
+    }
   }
 
   function eraseAtPoint(pageEntry, point) {
     const targetStroke = findStrokeNearPoint(pageEntry.pageNumber, point);
     if (targetStroke) {
-      state.strokes = state.strokes.filter(
+      const remainingStrokes = state.strokes.filter(
         (stroke) => stroke.id !== targetStroke.id
       );
+      const epoch = loadEpoch;
       options.onErase?.(
         structuredClone(targetStroke),
-        structuredClone(state.strokes)
+        structuredClone(remainingStrokes)
       );
-      redrawAll();
+      if (loadEpoch === epoch) {
+        state.strokes = remainingStrokes;
+        redrawPages([pageEntry.pageNumber]);
+      }
       return true;
     }
 
@@ -259,98 +414,153 @@ export function createDrawingLayer(pageEntries, options) {
         };
         eraseAtPoint(pageEntry, point);
       },
-      true
+      { capture: true, signal: listeners.signal }
     );
 
-    canvas.addEventListener('pointerdown', (event) => {
-      const mode = isStylusEraseEvent(event) ? 'erase' : options.getMode();
-      if (mode === 'select') {
-        return;
-      }
+    canvas.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (state.activePointerId !== null) return;
+        const mode = isStylusEraseEvent(event) ? 'erase' : options.getMode();
+        if (mode === 'select') {
+          return;
+        }
 
-      event.preventDefault();
-      canvas.setPointerCapture(event.pointerId);
-      if (!isTouchInputAllowed(event, options)) {
-        state.touchPan = {
-          pointerId: event.pointerId,
-          clientX: event.clientX,
-          clientY: event.clientY,
-        };
-        return;
-      }
+        event.preventDefault();
+        canvas.setPointerCapture(event.pointerId);
+        if (!isTouchInputAllowed(event, options)) {
+          state.touchPan = {
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          };
+          return;
+        }
 
-      if (mode === 'erase') {
-        const point = {
-          ...toPoint(canvas, event),
+        if (mode === 'erase') {
+          const point = {
+            ...toPoint(canvas, event),
+            viewportWidth: canvas.width,
+            viewportHeight: canvas.height,
+          };
+          eraseAtPoint(pageEntry, point);
+          return;
+        }
+
+        state.currentStroke = {
+          id: crypto.randomUUID(),
+          page: pageEntry.pageNumber,
+          color: options.getColor(),
+          width: options.getWidth(),
           viewportWidth: canvas.width,
           viewportHeight: canvas.height,
+          points: [toPoint(canvas, event)],
         };
-        eraseAtPoint(pageEntry, point);
-        return;
-      }
+        state.activePointerId = event.pointerId;
+        state.previewPointCount = 0;
+        schedulePreview(pageEntry);
+      },
+      { signal: listeners.signal }
+    );
 
-      state.currentStroke = {
-        id: crypto.randomUUID(),
-        page: pageEntry.pageNumber,
-        color: options.getColor(),
-        width: options.getWidth(),
-        viewportWidth: canvas.width,
-        viewportHeight: canvas.height,
-        points: [toPoint(canvas, event)],
-      };
-      state.activePointerId = event.pointerId;
-      redrawPage(pageEntry);
-    });
-
-    canvas.addEventListener('pointermove', (event) => {
-      if (state.touchPan?.pointerId === event.pointerId) {
-        event.preventDefault();
-        const scrollContainer = options.getScrollContainer?.();
-        if (scrollContainer) {
-          scrollContainer.scrollLeft -= event.clientX - state.touchPan.clientX;
-          scrollContainer.scrollTop -= event.clientY - state.touchPan.clientY;
+    canvas.addEventListener(
+      'pointermove',
+      (event) => {
+        if (state.touchPan?.pointerId === event.pointerId) {
+          event.preventDefault();
+          const scrollContainer = options.getScrollContainer?.();
+          if (scrollContainer) {
+            scrollContainer.scrollLeft -=
+              event.clientX - state.touchPan.clientX;
+            scrollContainer.scrollTop -= event.clientY - state.touchPan.clientY;
+          }
+          state.touchPan.clientX = event.clientX;
+          state.touchPan.clientY = event.clientY;
+          return;
         }
-        state.touchPan.clientX = event.clientX;
-        state.touchPan.clientY = event.clientY;
-        return;
-      }
 
-      if (
-        !state.currentStroke ||
-        event.pointerId !== state.activePointerId ||
-        state.currentStroke.page !== pageEntry.pageNumber ||
-        options.getMode() !== 'annotate'
-      ) {
-        return;
-      }
+        if (
+          !state.currentStroke ||
+          event.pointerId !== state.activePointerId ||
+          state.currentStroke.page !== pageEntry.pageNumber ||
+          options.getMode() !== 'annotate'
+        ) {
+          return;
+        }
 
-      state.currentStroke.points.push(toPoint(canvas, event));
-      redrawPage(pageEntry);
-    });
+        const samples = event.getCoalescedEvents?.();
+        const rect = canvas.getBoundingClientRect();
+        for (const sample of samples?.length ? samples : [event]) {
+          state.currentStroke.points.push(toPoint(canvas, sample, rect));
+        }
+        schedulePreview(pageEntry);
+      },
+      { signal: listeners.signal }
+    );
 
     function finishPointer(event) {
       if (state.touchPan?.pointerId === event.pointerId) {
         state.touchPan = null;
         return;
       }
+      // Pointerup can carry a final position not delivered by pointermove.
+      if (
+        event.type === 'pointerup' &&
+        state.currentStroke &&
+        state.activePointerId === event.pointerId &&
+        state.currentStroke.page === pageEntry.pageNumber
+      ) {
+        const point = toPoint(canvas, event);
+        const last = state.currentStroke.points.at(-1);
+        if (point.x !== last.x || point.y !== last.y) {
+          state.currentStroke.points.push(point);
+        }
+      }
       finalizeStroke(event);
     }
 
-    canvas.addEventListener('pointerup', finishPointer);
-    canvas.addEventListener('pointercancel', finishPointer);
+    canvas.addEventListener('pointerup', finishPointer, {
+      signal: listeners.signal,
+    });
+    canvas.addEventListener('pointercancel', finishPointer, {
+      signal: listeners.signal,
+    });
+    canvas.addEventListener('lostpointercapture', finishPointer, {
+      signal: listeners.signal,
+    });
   }
 
   return {
-    load(strokes) {
+    dispose() {
+      cancelPreview();
+      listeners.abort();
+      state.currentStroke = null;
+      state.activePointerId = null;
+      state.touchPan = null;
+      state.previewPointCount = 0;
+    },
+    load(strokes, changedPage) {
+      const changedPages =
+        changedPage === undefined
+          ? changedStrokePages(state.strokes, strokes)
+          : new Set([changedPage]);
+      if (state.currentStroke) changedPages.add(state.currentStroke.page);
       state.strokes = structuredClone(strokes);
       state.currentStroke = null;
       state.activePointerId = null;
       state.touchPan = null;
-      redrawAll();
+      state.previewPointCount = 0;
+      loadEpoch++;
+      redrawPages(changedPages);
     },
     removeStroke(strokeId) {
+      const pages = new Set(
+        state.strokes
+          .filter((stroke) => stroke.id === strokeId)
+          .map((stroke) => stroke.page)
+      );
       state.strokes = state.strokes.filter((stroke) => stroke.id !== strokeId);
-      redrawAll();
+      if (pages.size) redrawPages(pages);
     },
     undoLastStroke() {
       const lastStroke = state.strokes.at(-1);
@@ -359,7 +569,7 @@ export function createDrawingLayer(pageEntries, options) {
       }
 
       state.strokes = state.strokes.slice(0, -1);
-      redrawAll();
+      redrawPages([lastStroke.page]);
       return structuredClone(lastStroke);
     },
   };

@@ -513,7 +513,7 @@ function renderSelectionAction() {
 function applySessionAnnotations(annotations, options = {}) {
   const nextAnnotations = cloneAnnotations(annotations);
   state.sessionAnnotations = nextAnnotations;
-  drawingLayer?.load(nextAnnotations.strokes);
+  drawingLayer?.load(nextAnnotations.strokes, options.changedStrokePage);
   renderHighlights(nextAnnotations.highlights);
   renderFormFields();
   renderComments();
@@ -572,6 +572,7 @@ async function rerenderPages() {
     return;
   }
 
+  drawingLayer?.dispose();
   pagesEl.replaceChildren(fragment);
   state.pageEntries = pages;
   state.externalOutline = outline;
@@ -602,17 +603,23 @@ async function rerenderPages() {
     getMode: () => state.mode,
     getAllowFingerDrawing: () => state.allowFingerDrawing,
     getScrollContainer: () => workspaceEl,
-    onChange(allStrokes) {
-      applySessionAnnotations({
-        ...state.sessionAnnotations,
-        strokes: allStrokes,
-      });
+    onChange(allStrokes, stroke) {
+      applySessionAnnotations(
+        {
+          ...state.sessionAnnotations,
+          strokes: allStrokes,
+        },
+        { changedStrokePage: stroke.page }
+      );
     },
-    onErase(_erasedStroke, remainingStrokes) {
-      applySessionAnnotations({
-        ...state.sessionAnnotations,
-        strokes: remainingStrokes,
-      });
+    onErase(erasedStroke, remainingStrokes) {
+      applySessionAnnotations(
+        {
+          ...state.sessionAnnotations,
+          strokes: remainingStrokes,
+        },
+        { changedStrokePage: erasedStroke.page }
+      );
     },
     onEraseHighlight(_erasedHighlight, remainingHighlights) {
       applySessionAnnotations({

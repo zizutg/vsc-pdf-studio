@@ -91,11 +91,12 @@
     ]
   },
   "scripts": {
+    "benchmark:drawing": "node benchmarks/liveDrawing.mjs",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint \"{src,models,storage,tests}/**/*.ts\"",
-    "format": "prettier --write \"{src,models,storage,tests,media}/**/*.{ts,js,css}\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"{src,models,storage,tests,media}/**/*.{ts,js,css}\" \"*.{json,md}\"",
+    "lint": "eslint \"{src,models,storage,tests}/**/*.ts\" \"benchmarks/**/*.mjs\"",
+    "format": "prettier --write \"{src,models,storage,tests,media}/**/*.{ts,js,css}\" \"benchmarks/**/*.{mjs,json,md}\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"{src,models,storage,tests,media}/**/*.{ts,js,css}\" \"benchmarks/**/*.{mjs,json,md}\" \"*.{json,md}\"",
     "sync:pdfjs": "cp node_modules/pdfjs-dist/build/pdf.min.js media/libs/pdf.min.js && cp node_modules/pdfjs-dist/build/pdf.worker.min.js media/libs/pdf.worker.min.js && cp node_modules/pdfjs-dist/web/pdf_viewer.js media/libs/pdf_viewer.js",
     "vscode:prepublish": "npm run compile",
     "package": "npx @vscode/vsce package",

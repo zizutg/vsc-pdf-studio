@@ -1,17 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.0.8
 
-- Added a default-pinned toolbar with optional auto-hide and top-edge reveal
-- Restored a centered preset-color popup on the toolbar chip, with a three-dot circle for custom colors in the right Tools panel
-- Added a freehand highlighter with adjustable width and opacity, non-accumulating translucent previews, and saved PDF strokes
-- Simplified newly completed pen strokes within a 0.25 CSS-pixel tolerance to reduce saved points without changing live previews or existing annotations
-- Limited ink redraws after drawing, erasing, undo/redo, and annotation reloads to pages whose strokes changed
-- Made live pen previews incremental: new segments are appended without clearing or replaying existing ink, while completed strokes retain full-path rendering
-- Batched live ink previews to animation frames while retaining pointer samples and final stroke endpoints; canceled stale previews when reloading or replacing pages
-- PDFs now open at Page Width zoom with both navigation and Tools panels collapsed, including documents with bookmarks
-- Replaced color and pen-width dropdowns with a compact, collapsible right Tools panel, always-visible pen size, and an overlay layout for narrow windows
-- Added clickable PDF links in Select mode for websites, email addresses, and internal page destinations
+- Added clickable PDF links in Select mode for websites, email addresses, and internal destinations
+- Added a freehand highlighter with adjustable width and opacity and saved PDF strokes
+- Improved live drawing performance with incremental, frame-batched previews, point simplification, and affected-page-only redraws
+- Added a default-pinned toolbar with optional auto-hide and top-edge reveal, plus a collapsible right Tools panel with pen and color controls
+- PDFs now open at Page Width zoom with both side panels collapsed
 
 ## 0.0.7
 

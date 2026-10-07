@@ -41,6 +41,7 @@ const strict_1 = __importDefault(require("node:assert/strict"));
 const fs = __importStar(require("node:fs/promises"));
 const os = __importStar(require("node:os"));
 const path = __importStar(require("node:path"));
+const pdfjs_dist_1 = require("pdfjs-dist");
 const pdf_lib_1 = require("pdf-lib");
 const constants_1 = require("../src/constants");
 const saveManager_1 = require("../storage/saveManager");
@@ -305,6 +306,20 @@ function decodeAnnotationContents(annotation) {
                         { x: 30, y: 40 },
                     ],
                 },
+                {
+                    id: 'highlighter-stroke',
+                    kind: 'highlighter',
+                    opacity: 0.4,
+                    color: '#eab308',
+                    width: 14,
+                    page: 1,
+                    viewportWidth: 400,
+                    viewportHeight: 500,
+                    points: [
+                        { x: 40, y: 60 },
+                        { x: 80, y: 60 },
+                    ],
+                },
             ],
         };
         await manager.saveDocument(uri, annotations, []);
@@ -313,9 +328,71 @@ function decodeAnnotationContents(annotation) {
         strict_1.default.ok(storedData instanceof pdf_lib_1.PDFRawStream);
         const storedJson = new TextDecoder().decode((0, pdf_lib_1.decodePDFRawStream)(storedData).decode());
         strict_1.default.equal(JSON.parse(storedJson).strokes[0].id, 'stream-stroke');
+        strict_1.default.equal(JSON.parse(storedJson).strokes[1].opacity, 0.4);
         manager.disposeSession(uri);
         const reopened = await manager.getAnnotations(uri);
         strict_1.default.equal(reopened.strokes[0]?.id, 'stream-stroke');
+        strict_1.default.equal(reopened.strokes[0]?.kind, 'pen');
+        strict_1.default.equal(reopened.strokes[0]?.opacity, 1);
+        strict_1.default.equal(reopened.strokes[1]?.kind, 'highlighter');
+        strict_1.default.equal(reopened.strokes[1]?.opacity, 0.4);
+    });
+});
+(0, node_test_1.default)('SaveManager exports one translucent highlighter path and removes it after erase', async () => {
+    await withTempPdf(async () => {
+        const pdf = await pdf_lib_1.PDFDocument.create();
+        pdf.addPage([400, 500]);
+        return pdf.save();
+    }, async (pdfPath, uri) => {
+        const manager = new saveManager_1.SaveManager();
+        const annotations = {
+            ...(0, annotation_1.emptyAnnotationDocument)(),
+            strokes: [
+                {
+                    id: 'highlighter-path',
+                    kind: 'highlighter',
+                    opacity: 0.4,
+                    color: '#eab308',
+                    width: 14,
+                    page: 1,
+                    viewportWidth: 400,
+                    viewportHeight: 500,
+                    points: [
+                        { x: 10, y: 20 },
+                        { x: 100, y: 20 },
+                        { x: 100, y: 60 },
+                    ],
+                },
+            ],
+        };
+        const getStrokeOperators = async () => {
+            const loadingTask = (0, pdfjs_dist_1.getDocument)({
+                data: new Uint8Array(await fs.readFile(pdfPath)),
+            });
+            try {
+                const pdf = await loadingTask.promise;
+                return await (await pdf.getPage(1)).getOperatorList();
+            }
+            finally {
+                await loadingTask.destroy();
+            }
+        };
+        await manager.saveDocument(uri, annotations, []);
+        const savedOperators = await getStrokeOperators();
+        strict_1.default.equal(savedOperators.fnArray.filter((op) => op === pdfjs_dist_1.OPS.stroke).length, 1);
+        const opacitySettings = savedOperators.argsArray
+            .filter((_args, index) => savedOperators.fnArray[index] === pdfjs_dist_1.OPS.setGState)
+            .flat(3);
+        strict_1.default.deepEqual(opacitySettings, ['CA', 0.4]);
+        manager.disposeSession(uri);
+        const reopened = await manager.getAnnotations(uri);
+        strict_1.default.equal(reopened.strokes[0]?.kind, 'highlighter');
+        strict_1.default.equal(reopened.strokes[0]?.opacity, 0.4);
+        await manager.saveDocument(uri, { ...reopened, strokes: [] }, []);
+        const erasedOperators = await getStrokeOperators();
+        strict_1.default.equal(erasedOperators.fnArray.filter((op) => op === pdfjs_dist_1.OPS.stroke).length, 0);
+        manager.disposeSession(uri);
+        strict_1.default.equal((await manager.getAnnotations(uri)).strokes.length, 0);
     });
 });
 //# sourceMappingURL=saveManager.test.js.map

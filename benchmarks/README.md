@@ -12,6 +12,8 @@ npm run --silent benchmark:drawing > benchmarks/live-drawing-latest.json
 
 Set `CHROME_PATH` to your browser executable if it is not at the platform default in the script. The runner starts a loopback-only server and a separate headless browser, generates PDFs in memory, and removes its temporary browser profile from the project when finished. It does not open or edit user PDFs. Benchmark files are excluded from the VSIX.
 
+The runner disables background frame throttling in headless Chrome and gives the frame-by-frame pixel suite a longer DevTools timeout than individual benchmark operations.
+
 For read-only comparisons, `DRAWING_SOURCE_REF=904ef5d npm run benchmark:drawing` serves `media/drawingLayer.js` and `media/main.js` from that Git revision while leaving the worktree untouched. Other assets come from the worktree. Reports include the override and SHA-256 hashes of the measured modules and benchmark script, since a commit ID alone does not identify uncommitted changes.
 
 ## Method
@@ -98,3 +100,9 @@ New pen strokes retain every pointer sample during the live preview, then simpli
 `live-drawing-simplified.json` records 24 passing browser pixel checks, including a slightly noisy straight stroke at widths 1/3/6 and scales 1x/2x. That 81-point stroke saves as 2 points in all six cases. Its completed rendering differs at antialiased edges but has no missing fully covered pixels compared with the unsimplified path. Completed canvas pixels exactly match an independent rendering of the saved path. The original straight, corner, and crossing cases also pass. Geometry unit tests cover corners, reversals, endpoint retention, bounded deviation, and long strokes across chunks.
 
 This is a storage and future-work reduction, not a demonstrated latency improvement: the dense-page completion median was 133.5 ms before and 149.3 ms after at native speed, and 475.4 ms versus 491.2 ms under 4x throttling. Three completion samples per scenario are insufficient to distinguish a small regression from noise. Full-document state copying remains the dominant cost; imported or previously saved strokes remain unsimplified. Physical pen and high-zoom visual checks remain necessary.
+
+## Freehand Highlighter Update
+
+The freehand highlighter lazily creates one pointer-transparent canvas above the active ink page and reuses it instead of allocating one per PDF page. It repaints its active path once per animation frame at the selected opacity, so successive preview batches do not accumulate alpha. Release commits the stroke to Studio annotation state and saves it as one translucent PDF path. Reload and disposal clear and detach the temporary preview. Opaque pen previews retain their incremental path.
+
+`live-drawing-highlighter-preview.json` records the preview-stage baseline. `live-drawing-highlighter.json` records the completed highlighter with 25 passing browser pixel checks. The self-crossing preview is compared with an independently drawn translucent path; minor edge differences are tolerated. The committed canvas must match an independent rendering of the saved path byte for byte, and neither preview nor committed path may exceed one 30% stroke's alpha at overlaps. Unit tests cover frame redraws, pen-canvas isolation, commit/erase, alpha restoration, reload, disposal, and PDF save/reopen/removal. Physical stylus testing remains outstanding.

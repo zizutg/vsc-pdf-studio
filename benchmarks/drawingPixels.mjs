@@ -217,5 +217,152 @@ export async function runDrawingPixelChecks() {
       }
     }
   }
+  const shell = document.createElement('div');
+  shell.style.cssText =
+    'position:fixed;left:0;top:0;pointer-events:none;z-index:-1';
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 180;
+  canvas.style.cssText = 'width:240px;height:180px';
+  shell.append(canvas);
+  canvas.setPointerCapture = () => {};
+  document.body.append(shell);
+  let previewCanvas;
+  const highlighterPoints = [
+    { x: 30, y: 50 },
+    { x: 150, y: 100 },
+    { x: 30, y: 100 },
+    { x: 150, y: 50 },
+  ];
+  let savedHighlighter;
+  const layer = createDrawingLayer(
+    [
+      {
+        pageNumber: 1,
+        drawingCanvas: canvas,
+        pageShell: shell,
+      },
+    ],
+    {
+      getMode: () => 'freehand-highlight',
+      getColor: () => '#eab308',
+      getHighlighterWidth: () => 14,
+      getHighlighterOpacity: () => 0.3,
+      onChange: (strokes) => {
+        savedHighlighter = strokes.at(-1);
+        layer.load(strokes);
+      },
+    }
+  );
+  try {
+    const rect = canvas.getBoundingClientRect();
+    const fire = (type, point) =>
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          pointerId: 1,
+          pointerType: 'pen',
+          buttons: type === 'pointerup' ? 0 : 1,
+          clientX: rect.left + point.x,
+          clientY: rect.top + point.y,
+        })
+      );
+    fire('pointerdown', highlighterPoints[0]);
+    for (let index = 1; index < highlighterPoints.length; index++) {
+      fire('pointermove', highlighterPoints[index]);
+      await settle();
+      previewCanvas = shell.querySelector('.highlighter-preview-canvas');
+      check(
+        previewCanvas !== null,
+        'highlighter preview canvas was not created'
+      );
+      const reference = document.createElement('canvas');
+      reference.width = 240;
+      reference.height = 180;
+      reference.getContext('2d').globalAlpha = 0.3;
+      paintStrokes(reference, [
+        {
+          color: '#eab308',
+          width: 14,
+          viewportWidth: 240,
+          viewportHeight: 180,
+          points: highlighterPoints.slice(0, index + 1),
+        },
+      ]);
+      const expected = reference
+        .getContext('2d')
+        .getImageData(0, 0, 240, 180).data;
+      const actual = previewCanvas
+        .getContext('2d')
+        .getImageData(0, 0, 240, 180).data;
+      let missingCorePixels = 0;
+      let alphaDifferencePixels = 0;
+      let largeColorDifferencePixels = 0;
+      let maxAlpha = 0;
+      for (let pixel = 0; pixel < actual.length; pixel += 4) {
+        maxAlpha = Math.max(maxAlpha, actual[pixel + 3]);
+        if (expected[pixel + 3] >= 70 && actual[pixel + 3] < 50)
+          missingCorePixels++;
+        if (Math.abs(expected[pixel + 3] - actual[pixel + 3]) > 2)
+          alphaDifferencePixels++;
+        if (
+          expected[pixel + 3] >= 10 &&
+          actual[pixel + 3] >= 10 &&
+          [0, 1, 2].some(
+            (channel) =>
+              Math.abs(expected[pixel + channel] - actual[pixel + channel]) > 10
+          )
+        )
+          largeColorDifferencePixels++;
+      }
+      check(
+        missingCorePixels === 0 &&
+          alphaDifferencePixels <= 240 * 180 * 0.02 &&
+          largeColorDifferencePixels <= 240 * 180 * 0.005,
+        `highlighter preview frame ${index} differs (${missingCorePixels} missing core, ${alphaDifferencePixels} alpha, ${largeColorDifferencePixels} color pixels)`
+      );
+      check(maxAlpha <= 78, 'highlighter overlap accumulated opacity');
+    }
+    fire('pointerup', highlighterPoints.at(-1));
+    check(
+      savedHighlighter?.kind === 'highlighter' &&
+        savedHighlighter.opacity === 0.3 &&
+        savedHighlighter.width === 14,
+      'highlighter stroke was not saved with its appearance'
+    );
+    const committedReference = document.createElement('canvas');
+    committedReference.width = canvas.width;
+    committedReference.height = canvas.height;
+    committedReference.getContext('2d').globalAlpha = savedHighlighter.opacity;
+    paintStrokes(committedReference, [savedHighlighter]);
+    const committedPixels = canvas
+      .getContext('2d')
+      .getImageData(0, 0, canvas.width, canvas.height).data;
+    const referencePixels = committedReference
+      .getContext('2d')
+      .getImageData(0, 0, canvas.width, canvas.height).data;
+    check(
+      committedPixels.every((value, index) => value === referencePixels[index]),
+      'committed highlighter differs from its saved path'
+    );
+    check(
+      committedPixels.every((value, index) => index % 4 !== 3 || value <= 78),
+      'committed highlighter overlap accumulated opacity'
+    );
+    check(
+      shell.querySelector('.highlighter-preview-canvas') === null,
+      'highlighter preview canvas remained attached after release'
+    );
+    const remaining = previewCanvas
+      .getContext('2d')
+      .getImageData(0, 0, 240, 180).data;
+    check(
+      remaining.every((value) => value === 0),
+      'highlighter preview remained after release'
+    );
+    results.push({ name: 'highlighter-preview-and-commit', opacity: 0.3 });
+  } finally {
+    layer.dispose();
+    shell.remove();
+  }
   return results;
 }

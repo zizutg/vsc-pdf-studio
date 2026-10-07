@@ -4,6 +4,8 @@ import * as https from 'node:https';
 import type { Uri } from 'vscode';
 import {
   decodePDFRawStream,
+  LineCapStyle,
+  LineJoinStyle,
   PDFArray,
   PDFButton,
   PDFCheckBox,
@@ -14,11 +16,15 @@ import {
   PDFName,
   PDFNumber,
   PDFOptionList,
+  PDFPage,
   PDFRadioGroup,
   PDFRawStream,
   PDFString,
   PDFTextField,
+  popGraphicsState,
+  pushGraphicsState,
   rgb,
+  setLineJoin,
 } from 'pdf-lib';
 import {
   emptyAnnotationDocument,
@@ -27,6 +33,7 @@ import {
   type AnnotationHighlight,
   type AnnotationPoint,
   type AnnotationRect,
+  type AnnotationStroke,
 } from '../models/annotation';
 import {
   type PdfButtonAction,
@@ -168,8 +175,13 @@ export class SaveManager {
       const scaleX = page.getWidth() / Math.max(stroke.viewportWidth, 1);
       const scaleY = page.getHeight() / Math.max(stroke.viewportHeight, 1);
       const lineWidth = stroke.width * ((scaleX + scaleY) / 2);
-      const color = toRgb(stroke.color);
 
+      if (stroke.kind === 'highlighter') {
+        drawHighlighterStroke(page, stroke, scaleX, scaleY, lineWidth);
+        continue;
+      }
+
+      const color = toRgb(stroke.color);
       for (const [start, end] of toSegments(stroke.points)) {
         page.drawLine({
           start: toPdfPoint(start, scaleX, scaleY, page.getHeight()),
@@ -842,6 +854,36 @@ function toSegments(
   }
 
   return segments;
+}
+
+function drawHighlighterStroke(
+  page: PDFPage,
+  stroke: AnnotationStroke,
+  scaleX: number,
+  scaleY: number,
+  lineWidth: number
+): void {
+  const path = stroke.points
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${point.x * scaleX} ${point.y * scaleY}`
+    )
+    .join(' ');
+  const opacity =
+    typeof stroke.opacity === 'number' && Number.isFinite(stroke.opacity)
+      ? Math.min(1, Math.max(0.1, stroke.opacity))
+      : 0.3;
+
+  page.pushOperators(pushGraphicsState(), setLineJoin(LineJoinStyle.Round));
+  page.drawSvgPath(path, {
+    x: 0,
+    y: page.getHeight(),
+    borderColor: toRgb(stroke.color),
+    borderWidth: lineWidth,
+    borderOpacity: opacity,
+    borderLineCap: LineCapStyle.Round,
+  });
+  page.pushOperators(popGraphicsState());
 }
 
 function toPdfPoint(

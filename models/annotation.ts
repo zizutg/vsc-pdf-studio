@@ -5,6 +5,8 @@ export interface AnnotationPoint {
 
 export interface AnnotationStroke {
   id: string;
+  kind?: 'pen' | 'highlighter';
+  opacity?: number;
   color: string;
   width: number;
   page: number;

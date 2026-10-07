@@ -68,6 +68,9 @@ function drawStroke(context, canvas, stroke, startIndex = 0) {
     return;
   }
 
+  const previousAlpha = context.globalAlpha ?? 1;
+  context.globalAlpha =
+    stroke.kind === 'highlighter' ? (stroke.opacity ?? 0.3) : 1;
   context.strokeStyle = stroke.color;
   const scaleX =
     canvas.width / Math.max(stroke.viewportWidth || canvas.width, 1);
@@ -88,6 +91,7 @@ function drawStroke(context, canvas, stroke, startIndex = 0) {
   }
 
   context.stroke();
+  context.globalAlpha = previousAlpha;
 }
 
 function isStylusEraseEvent(event) {
@@ -125,6 +129,8 @@ function sameRenderedStrokes(left, right) {
     const b = right[index];
     if (
       a.id !== b.id ||
+      (a.kind ?? 'pen') !== (b.kind ?? 'pen') ||
+      (a.opacity ?? 1) !== (b.opacity ?? 1) ||
       a.color !== b.color ||
       a.width !== b.width ||
       a.viewportWidth !== b.viewportWidth ||
@@ -164,13 +170,53 @@ export function createDrawingLayer(pageEntries, options) {
   const pendingPages = new Set();
   let frameId = null;
   let loadEpoch = 0;
+  let highlighterPreviewCanvas = null;
   const state = {
     strokes: [],
     currentStroke: null,
     activePointerId: null,
     touchPan: null,
     previewPointCount: 0,
+    previewPageNumber: null,
   };
+
+  function paintHighlighterPreview(pageEntry) {
+    const stroke = state.currentStroke;
+    const active =
+      stroke?.kind === 'highlighter' && stroke.page === pageEntry.pageNumber;
+    if (!active && state.previewPageNumber !== pageEntry.pageNumber) return;
+    if (active && !highlighterPreviewCanvas) {
+      highlighterPreviewCanvas =
+        pageEntry.highlighterPreviewCanvas ??
+        pageEntry.pageShell.ownerDocument.createElement('canvas');
+      highlighterPreviewCanvas.className = 'highlighter-preview-canvas';
+    }
+    const canvas = highlighterPreviewCanvas;
+    if (!canvas) return;
+    if (active) {
+      const source = pageEntry.drawingCanvas;
+      if (canvas.width !== source.width || canvas.height !== source.height) {
+        canvas.width = source.width;
+        canvas.height = source.height;
+      }
+      canvas.style.width = source.style.width;
+      canvas.style.height = source.style.height;
+      if (canvas.parentNode !== pageEntry.pageShell) {
+        pageEntry.pageShell.append?.(canvas);
+      }
+    }
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (active) {
+      // One complete path per frame avoids dark seams between preview batches.
+      drawStroke(context, canvas, stroke);
+      state.previewPointCount = stroke.points.length;
+      state.previewPageNumber = pageEntry.pageNumber;
+    } else {
+      state.previewPageNumber = null;
+      canvas.remove?.();
+    }
+  }
 
   function redrawPage(pageEntry) {
     const context = pageEntry.drawingCanvas.getContext('2d');
@@ -187,10 +233,14 @@ export function createDrawingLayer(pageEntries, options) {
       }
     }
 
-    if (state.currentStroke?.page === pageEntry.pageNumber) {
+    if (
+      state.currentStroke?.page === pageEntry.pageNumber &&
+      state.currentStroke.kind !== 'highlighter'
+    ) {
       drawStroke(context, pageEntry.drawingCanvas, state.currentStroke);
       state.previewPointCount = state.currentStroke.points.length;
     }
+    paintHighlighterPreview(pageEntry);
   }
 
   function redrawPages(pageNumbers) {
@@ -229,6 +279,11 @@ export function createDrawingLayer(pageEntries, options) {
     )
       return;
 
+    if (stroke.kind === 'highlighter') {
+      paintHighlighterPreview(pageEntry);
+      return;
+    }
+
     // Opaque pen previews only: one preceding segment preserves the round join
     // at the batch boundary. Finalization uses the canonical full-stroke path.
     drawStroke(
@@ -263,6 +318,7 @@ export function createDrawingLayer(pageEntries, options) {
 
     const page = state.currentStroke.page;
     const epoch = loadEpoch;
+    const isHighlighter = state.currentStroke.kind === 'highlighter';
     const committed = state.currentStroke.points.length > 1;
     if (committed) {
       const canvas = entriesByPage.get(page)?.drawingCanvas;
@@ -288,6 +344,7 @@ export function createDrawingLayer(pageEntries, options) {
     if (loadEpoch === epoch) {
       if (committed) redrawPages([page]);
       else cancelPreview();
+      if (isHighlighter) paintHighlighterPreview(entriesByPage.get(page));
     }
   }
 
@@ -449,9 +506,15 @@ export function createDrawingLayer(pageEntries, options) {
 
         state.currentStroke = {
           id: crypto.randomUUID(),
+          kind: mode === 'freehand-highlight' ? 'highlighter' : 'pen',
+          opacity:
+            mode === 'freehand-highlight' ? options.getHighlighterOpacity() : 1,
           page: pageEntry.pageNumber,
           color: options.getColor(),
-          width: options.getWidth(),
+          width:
+            mode === 'freehand-highlight'
+              ? options.getHighlighterWidth()
+              : options.getWidth(),
           viewportWidth: canvas.width,
           viewportHeight: canvas.height,
           points: [toPoint(canvas, event)],
@@ -483,7 +546,10 @@ export function createDrawingLayer(pageEntries, options) {
           !state.currentStroke ||
           event.pointerId !== state.activePointerId ||
           state.currentStroke.page !== pageEntry.pageNumber ||
-          options.getMode() !== 'annotate'
+          options.getMode() !==
+            (state.currentStroke.kind === 'highlighter'
+              ? 'freehand-highlight'
+              : 'annotate')
         ) {
           return;
         }
@@ -538,6 +604,8 @@ export function createDrawingLayer(pageEntries, options) {
       state.activePointerId = null;
       state.touchPan = null;
       state.previewPointCount = 0;
+      for (const pageEntry of pageEntries) paintHighlighterPreview(pageEntry);
+      highlighterPreviewCanvas = null;
     },
     load(strokes, changedPage) {
       const changedPages =

@@ -229,6 +229,9 @@ try {
     chromePath,
     [
       '--headless=new',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
       '--no-first-run',
       '--no-default-browser-check',
       '--remote-debugging-port=0',
@@ -282,22 +285,26 @@ try {
       exceptions.push(message.params.exceptionDetails);
     }
   });
-  const send = (method, params = {}) =>
+  const send = (method, params = {}, timeoutMs = 60000) =>
     new Promise((resolve, reject) => {
       const requestId = ++id;
       const timer = setTimeout(
         () => reject(new Error(`Timed out: ${method}`)),
-        60000
+        timeoutMs
       );
       pending.set(requestId, { resolve, reject, timer });
       socket.send(JSON.stringify({ id: requestId, method, params }));
     });
-  const evaluate = async (expression) => {
-    const result = await send('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    });
+  const evaluate = async (expression, timeoutMs) => {
+    const result = await send(
+      'Runtime.evaluate',
+      {
+        expression,
+        returnByValue: true,
+        awaitPromise: true,
+      },
+      timeoutMs
+    );
     if (result.exceptionDetails)
       throw new Error(
         result.exceptionDetails.exception?.description ||
@@ -322,7 +329,8 @@ try {
   await send('Page.navigate', { url });
   await waitFor('window.benchmarkMessages?.some(m => m.type === "ready")');
   const pixelChecks = await evaluate(
-    "import('/benchmarks/drawingPixels.mjs').then(module => module.runDrawingPixelChecks())"
+    "import('/benchmarks/drawingPixels.mjs').then(module => module.runDrawingPixelChecks())",
+    180000
   );
   console.error(`Pixel checks passed: ${pixelChecks.length}`);
   const results = [];

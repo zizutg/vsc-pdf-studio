@@ -9,11 +9,17 @@ function createLucideIcon(paths, attrs = '') {
 export const icons = {
   minus: createLucideIcon('<path d="M5 12h14" />'),
   plus: createLucideIcon('<path d="M12 5v14" /><path d="M5 12h14" />'),
+  moreHorizontal: createLucideIcon(
+    '<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="4" />'
+  ),
   pen: createLucideIcon(
-    '<path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />'
+    '<path d="M11 20c2-2 3-2 5 0s3 2 5 0" /><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />'
   ),
   highlighter: createLucideIcon(
-    '<path d="m9 11-6 6v3h9l6-6" /><path d="m22 12-4-4" /><path d="M8 16l-2-2" />'
+    '<path d="m5 16 5-12h4l5 12" /><path d="M7 11h10" /><path d="M3 20h18" stroke-width="3.5" />'
+  ),
+  freehandHighlighter: createLucideIcon(
+    '<path d="m14 4 6 6-7 7-5-5z" /><path d="m8 12-2 3 3-1" /><path d="M2 20c3-3 5-3 7 0s5 3 8-1" stroke-width="3.5" />'
   ),
   underline: createLucideIcon(
     '<path d="M6 4v6a6 6 0 0 0 12 0V4" /><path d="M4 20h16" />'
@@ -70,6 +76,12 @@ export const icons = {
   sidebar: createLucideIcon('<path d="M4 5h16v14H4z" /><path d="M9 5v14" />'),
   sidebarRight: createLucideIcon(
     '<path d="M4 5h16v14H4z" /><path d="M15 5v14" />'
+  ),
+  pin: createLucideIcon(
+    '<path d="M16 9V4l1-1H7l1 1v5l-2 3v2h12v-2z" /><path d="M12 14v7" />'
+  ),
+  pinOff: createLucideIcon(
+    '<path d="M16 9V4l1-1H7l1 1v5l-2 3v2h12v-2z" /><path d="M12 14v7" /><path d="M3 3l18 18" />'
   ),
   chevronLeft: createLucideIcon(
     '<path d="m15 18-6-6 6-6" />',

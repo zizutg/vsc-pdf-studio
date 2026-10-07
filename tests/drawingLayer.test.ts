@@ -16,10 +16,14 @@ const drawingModule = readFile(
 class Canvas extends EventTarget {
   width = 100;
   height = 100;
+  style = { width: '100px', height: '100px' };
+  parentNode: EventTarget | null = null;
   clears = 0;
   paths: Array<Array<{ x: number; y: number }>> = [];
+  alphas: number[] = [];
   currentPath: Array<{ x: number; y: number }> = [];
   context = {
+    globalAlpha: 1,
     clearRect: () => {
       this.clears++;
     },
@@ -28,7 +32,10 @@ class Canvas extends EventTarget {
     },
     moveTo: (x: number, y: number) => this.currentPath.push({ x, y }),
     lineTo: (x: number, y: number) => this.currentPath.push({ x, y }),
-    stroke: () => this.paths.push([...this.currentPath]),
+    stroke: () => {
+      this.paths.push([...this.currentPath]);
+      this.alphas.push(this.context.globalAlpha);
+    },
   };
   getContext() {
     return this.context;
@@ -37,6 +44,9 @@ class Canvas extends EventTarget {
     return { left: 0, top: 0, width: 100, height: 100 };
   }
   setPointerCapture() {}
+  remove() {
+    this.parentNode = null;
+  }
 }
 
 async function fixture(t: TestContext) {
@@ -55,6 +65,7 @@ async function fixture(t: TestContext) {
   const pages = [1, 2].map((pageNumber) => ({
     pageNumber,
     drawingCanvas: new Canvas(),
+    highlighterPreviewCanvas: new Canvas(),
     pageShell: new EventTarget(),
   }));
   const changes: any[] = [];
@@ -66,6 +77,8 @@ async function fixture(t: TestContext) {
     getAllowFingerDrawing: () => settings.allowFinger,
     getColor: () => '#123456',
     getWidth: () => 3,
+    getHighlighterWidth: () => 14,
+    getHighlighterOpacity: () => 0.3,
     getScrollContainer: () => scroll,
     onChange: (strokes: any[], stroke: any) => {
       changes.push({ strokes, stroke });
@@ -218,6 +231,137 @@ test('finger scroll policy and an unrelated pointer do not interrupt a pen strok
   f.fire('pointermove', { pointerType: 'touch', clientX: 20 });
   f.fire('pointerup', { pointerType: 'touch', clientX: 20 });
   assert.equal(f.changes.length, 2);
+});
+
+test('freehand highlighter previews one translucent full path per frame and commits it', async (t) => {
+  const f = await fixture(t);
+  f.settings.mode = 'freehand-highlight';
+  f.fire('pointerdown');
+  f.fire('pointermove', { clientX: 20 });
+  f.tick();
+  const preview = f.pages[0].highlighterPreviewCanvas;
+  assert.deepEqual(preview.paths.at(-1), [
+    { x: 10, y: 10 },
+    { x: 20, y: 10 },
+  ]);
+  assert.equal(preview.clears, 1);
+  assert.equal(preview.alphas.at(-1), 0.3);
+  f.fire('pointermove', { clientX: 25 });
+  f.tick();
+  assert.deepEqual(preview.paths.at(-1), [
+    { x: 10, y: 10 },
+    { x: 20, y: 10 },
+    { x: 25, y: 10 },
+  ]);
+  assert.equal(preview.clears, 2);
+  assert.equal(preview.context.globalAlpha, 1);
+  f.fire('pointerup', { clientX: 30 });
+  assert.equal(f.changes.length, 1);
+  assert.equal(f.changes[0].stroke.kind, 'highlighter');
+  assert.equal(f.changes[0].stroke.opacity, 0.3);
+  assert.equal(f.changes[0].stroke.width, 14);
+  assert.deepEqual(f.changes[0].stroke.points, [
+    { x: 10, y: 10 },
+    { x: 30, y: 10 },
+  ]);
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.pages[0].drawingCanvas.clears, 1);
+  assert.equal(f.pages[0].drawingCanvas.alphas.at(-1), 0.3);
+  assert.equal(preview.clears, 3);
+});
+
+test('committed highlighter can be erased and restored without changing opacity', async (t) => {
+  const f = await fixture(t);
+  f.settings.mode = 'freehand-highlight';
+  f.fire('pointerdown');
+  f.fire('pointermove', { clientX: 20 });
+  f.fire('pointerup', { clientX: 20 });
+  const saved = f.changes[0].strokes;
+  const beforeErase = f.pages[0].drawingCanvas.clears;
+  f.settings.mode = 'erase';
+  f.fire('pointerdown', { clientX: 15 });
+  assert.equal(f.erased.length, 1);
+  assert.equal(f.erased[0].kind, 'highlighter');
+  assert.equal(f.pages[0].drawingCanvas.clears, beforeErase + 1);
+  f.controller.load(saved);
+  assert.equal(f.pages[0].drawingCanvas.alphas.at(-1), 0.3);
+  assert.equal(f.controller.undoLastStroke()?.kind, 'highlighter');
+});
+
+test('loading translucent strokes restores canvas alpha for later pen strokes', async (t) => {
+  const f = await fixture(t);
+  const ink = {
+    page: 1,
+    width: 14,
+    color: '#eab308',
+    viewportWidth: 100,
+    viewportHeight: 100,
+    points: [
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+    ],
+  };
+  f.controller.load([
+    { ...ink, id: 'highlighter', kind: 'highlighter', opacity: 0.4 },
+    { ...ink, id: 'pen', kind: 'pen', opacity: 1 },
+  ]);
+  assert.deepEqual(f.pages[0].drawingCanvas.alphas, [0.4, 1]);
+  assert.equal(f.pages[0].drawingCanvas.context.globalAlpha, 1);
+});
+
+test('reload and disposal clear a pending highlighter preview', async (t) => {
+  const f = await fixture(t);
+  f.settings.mode = 'freehand-highlight';
+  f.fire('pointerdown');
+  f.fire('pointermove', { clientX: 20 });
+  f.tick();
+  const preview = f.pages[0].highlighterPreviewCanvas;
+  assert.equal(preview.paths.length, 1);
+  f.controller.load([]);
+  assert.equal(preview.clears, 2);
+  assert.equal(f.frames.size, 0);
+  f.fire('pointerdown');
+  f.fire('pointermove', { clientX: 30 });
+  f.tick();
+  f.controller.dispose();
+  assert.equal(preview.clears, 4);
+  assert.equal(f.changes.length, 0);
+});
+
+test('highlighter preview canvas is created lazily and reused', async (t) => {
+  const f = await fixture(t);
+  f.settings.mode = 'freehand-highlight';
+  let created = 0;
+  const previews: Canvas[] = [];
+  const shell = f.pages[0].pageShell as EventTarget & {
+    ownerDocument?: { createElement: () => Canvas };
+    append?: (canvas: Canvas) => void;
+  };
+  shell.ownerDocument = {
+    createElement: () => {
+      created++;
+      const preview = new Canvas();
+      previews.push(preview);
+      return preview;
+    },
+  };
+  shell.append = (canvas) => {
+    canvas.parentNode = shell;
+  };
+  (
+    f.pages[0] as { highlighterPreviewCanvas?: Canvas }
+  ).highlighterPreviewCanvas = undefined;
+  assert.equal(created, 0);
+
+  for (let index = 0; index < 2; index++) {
+    f.fire('pointerdown');
+    f.fire('pointermove', { clientX: 20 });
+    f.tick();
+    assert.equal(created, 1);
+    assert.equal(previews[0]?.parentNode, shell);
+    f.fire('pointerup', { clientX: 20 });
+    assert.equal(previews[0]?.parentNode, null);
+  }
 });
 
 test('reload/undo/redo state cancels queued preview and restores the supplied ink', async (t) => {

@@ -40,8 +40,16 @@ function sanitizeStroke(value) {
     if (points.length < 2) {
         return null;
     }
+    const kind = value.kind === 'highlighter' ? 'highlighter' : 'pen';
+    const opacity = kind === 'highlighter'
+        ? typeof value.opacity === 'number' && Number.isFinite(value.opacity)
+            ? Math.min(1, Math.max(0.1, value.opacity))
+            : 0.3
+        : 1;
     return {
         id: sanitizeId(value.id),
+        kind,
+        opacity,
         color: sanitizeColor(value.color),
         width: sanitizePositiveNumber(value.width, 3),
         page: sanitizePage(value.page),

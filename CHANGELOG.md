@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a default-pinned toolbar with optional auto-hide and top-edge reveal
+- Restored a centered preset-color popup on the toolbar chip, with a three-dot circle for custom colors in the right Tools panel
+- Added a freehand highlighter with adjustable width and opacity, non-accumulating translucent previews, and saved PDF strokes
 - Simplified newly completed pen strokes within a 0.25 CSS-pixel tolerance to reduce saved points without changing live previews or existing annotations
 - Limited ink redraws after drawing, erasing, undo/redo, and annotation reloads to pages whose strokes changed
 - Made live pen previews incremental: new segments are appended without clearing or replaying existing ink, while completed strokes retain full-path rendering

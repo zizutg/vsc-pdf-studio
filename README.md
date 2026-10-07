@@ -9,7 +9,7 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 ## Features
 
 - Opens `*.pdf` files inside a custom PDF editor in VS Code
-- Freehand annotation with color and width controls
+- Freehand pen and highlighter annotation with color, width, and highlighter opacity controls
 - Text selection, inline highlight, and comment workflows
 - Search, page navigation, and PDF outline/bookmark navigation
 - Clickable PDF hyperlinks in Select mode, including websites, email links, and destinations within the document
@@ -26,7 +26,9 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 
 - **Opening PDFs:** Documents open at Page Width zoom with both side panels collapsed. Use the toolbar to open either panel or change the zoom.
 
-- **Annotation tools:** Use the rightmost toolbar button to open or collapse the Tools panel. Choose a preset or any custom color; pen size is always available and applies to new pen strokes. The color-chip button also opens the panel. On narrow windows, the panel overlays the PDF instead of reducing its width.
+- **Toolbar:** The toolbar is pinned by default. Click its pin button to let it auto-hide over the PDF; move the pointer to the top edge or tab to the reveal control to show it again. Click the pin button again to keep it visible.
+
+- **Annotation tools:** Click the toolbar color chip for five preset colors; the three-dot circle opens the right Tools panel for a custom color. The rightmost toolbar button also opens that panel, where pen size is always available and Freehand Highlighter has width and opacity controls. On narrow windows, the panel overlays the PDF instead of reducing its width.
 
 - **Comment author:** Open the Command Palette and run `PDF Studio: Set Comment Author` to set the name written into PDF comments.
 
@@ -38,6 +40,7 @@ PDF Studio is a VS Code custom editor for reviewing and annotating PDF files wit
 - Saved comments/highlights are rendered into the PDF for external-reader compatibility
 - Comment/search/selection behavior depends on the embedded text layer of the source PDF; scanned image PDFs may not behave like text PDFs
 - Clickable links require hyperlink annotations in the PDF; plain URL text is not automatically converted into a link
+- Freehand highlighter strokes are visible in other PDF readers as page content, but are not native editable PDF ink annotations there
 
 ## Git Tracking
 

@@ -116,6 +116,10 @@ class SaveManager {
             const scaleX = page.getWidth() / Math.max(stroke.viewportWidth, 1);
             const scaleY = page.getHeight() / Math.max(stroke.viewportHeight, 1);
             const lineWidth = stroke.width * ((scaleX + scaleY) / 2);
+            if (stroke.kind === 'highlighter') {
+                drawHighlighterStroke(page, stroke, scaleX, scaleY, lineWidth);
+                continue;
+            }
             const color = toRgb(stroke.color);
             for (const [start, end] of toSegments(stroke.points)) {
                 page.drawLine({
@@ -589,6 +593,24 @@ function toSegments(points) {
         segments.push([points[index - 1], points[index]]);
     }
     return segments;
+}
+function drawHighlighterStroke(page, stroke, scaleX, scaleY, lineWidth) {
+    const path = stroke.points
+        .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x * scaleX} ${point.y * scaleY}`)
+        .join(' ');
+    const opacity = typeof stroke.opacity === 'number' && Number.isFinite(stroke.opacity)
+        ? Math.min(1, Math.max(0.1, stroke.opacity))
+        : 0.3;
+    page.pushOperators((0, pdf_lib_1.pushGraphicsState)(), (0, pdf_lib_1.setLineJoin)(pdf_lib_1.LineJoinStyle.Round));
+    page.drawSvgPath(path, {
+        x: 0,
+        y: page.getHeight(),
+        borderColor: toRgb(stroke.color),
+        borderWidth: lineWidth,
+        borderOpacity: opacity,
+        borderLineCap: pdf_lib_1.LineCapStyle.Round,
+    });
+    page.pushOperators((0, pdf_lib_1.popGraphicsState)());
 }
 function toPdfPoint(point, scaleX, scaleY, pageHeight) {
     return {

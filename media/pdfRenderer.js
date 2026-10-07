@@ -322,8 +322,8 @@ async function buildOutline(pdf) {
 
 function resolveScale(zoomConfig, workspaceSize, basePageSize) {
   const columnCount = zoomConfig.layout === 'double' ? 2 : 1;
-  const interPageGap = columnCount > 1 ? 24 : 0;
-  const availableWidth = Math.max(240, workspaceSize.width - 24);
+  const interPageGap = columnCount > 1 ? 6 : 0;
+  const availableWidth = Math.max(240, workspaceSize.width - 9);
   const columnWidth = Math.max(
     120,
     (availableWidth - interPageGap) / columnCount
@@ -337,7 +337,7 @@ function resolveScale(zoomConfig, workspaceSize, basePageSize) {
     case 'automatic': {
       const fitWidth = columnWidth / Math.max(basePageSize.width, 1);
       const fitHeight =
-        (workspaceSize.height - 24) / Math.max(basePageSize.height, 1);
+        (workspaceSize.height - 9) / Math.max(basePageSize.height, 1);
       return Math.max(0.5, Math.min(fitWidth, fitHeight));
     }
     case 'actual-size': {

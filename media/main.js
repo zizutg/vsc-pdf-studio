@@ -37,7 +37,12 @@ import {
 import { createSearchController } from './search.js';
 import { createSelectionController } from './selection.js';
 import { createSidebarController } from './sidebar.js';
-import { createToolsPanelController, toolsPanelMarkup } from './toolsPanel.js';
+import { createToolbarVisibilityController } from './toolbarVisibility.js';
+import {
+  colorPopoverMarkup,
+  createToolsPanelController,
+  toolsPanelMarkup,
+} from './toolsPanel.js';
 import { createViewportController } from './viewport.js';
 
 const vscode = acquireVsCodeApi();
@@ -95,6 +100,7 @@ const state = {
 const MAX_HISTORY_ENTRIES = 30;
 
 app.innerHTML = `
+  <button type="button" id="toolbar-reveal" aria-label="Show toolbar" title="Show toolbar" hidden></button>
   <div class="toolbar">
     <div class="toolbar-start">
       <button type="button" id="sidebar-toggle" aria-label="Toggle navigation" title="Toggle navigation">${icons.sidebar}</button>
@@ -130,14 +136,18 @@ app.innerHTML = `
             <button type="button" class="mode-button is-active" data-mode="select" aria-label="Select" title="Select">${icons.pointer}</button>
             <button type="button" class="mode-button" data-mode="highlight" aria-label="Highlight" title="Highlight">${icons.highlighter}</button>
             <button type="button" class="mode-button" data-mode="annotate" aria-label="Annotate" title="Annotate">${icons.pen}</button>
+            <button type="button" class="mode-button" data-mode="freehand-highlight" aria-label="Freehand highlighter" title="Freehand highlighter">${icons.freehandHighlighter}</button>
             <button type="button" class="mode-button" data-mode="erase" aria-label="Erase" title="Erase">${icons.eraser}</button>
           </div>
         </div>
         <button type="button" id="comment-button" aria-label="Add comment" title="Add comment">${icons.comment}</button>
         <button type="button" id="comment-views-toggle" aria-label="Show all comments" title="Show all comments">${icons.commentsExpanded}</button>
-        <button type="button" id="color-button" aria-label="Annotation color" title="Annotation color" aria-controls="tools-panel" aria-expanded="false">
-          <span class="toolbar-color-chip" id="color-chip" aria-hidden="true"></span>
-        </button>
+        <div class="color-wrap" id="color-wrap">
+          <button type="button" id="color-button" aria-label="Annotation color" title="Annotation color" aria-controls="color-popover" aria-haspopup="dialog" aria-expanded="false">
+            <span class="toolbar-color-chip" id="color-chip" aria-hidden="true"></span>
+          </button>
+          ${colorPopoverMarkup(icons.moreHorizontal)}
+        </div>
         <button type="button" id="undo-button" aria-label="Undo" title="Undo">${icons.undo}</button>
         <button type="button" id="redo-button" aria-label="Redo" title="Redo">${icons.redo}</button>
         <div class="search-wrap">
@@ -153,6 +163,7 @@ app.innerHTML = `
       </div>
     </div>
     <div class="toolbar-end">
+      <button type="button" id="toolbar-pin" aria-label="Unpin toolbar" title="Unpin toolbar" aria-pressed="true">${icons.pin}</button>
       <button type="button" id="menu-button" aria-label="Toggle tools panel" title="Toggle tools panel" aria-controls="tools-panel" aria-expanded="false">${icons.sidebarRight}</button>
     </div>
   </div>
@@ -178,6 +189,9 @@ app.innerHTML = `
 `;
 
 const contentShellEl = document.querySelector('#content-shell');
+const toolbarEl = document.querySelector('.toolbar');
+const toolbarRevealEl = document.querySelector('#toolbar-reveal');
+const toolbarPinEl = document.querySelector('#toolbar-pin');
 const sidebarToggleEl = document.querySelector('#sidebar-toggle');
 const sidebarEl = document.querySelector('#sidebar');
 const sidebarTabsEl = document.querySelector('#sidebar-tabs');
@@ -198,6 +212,8 @@ const redoButtonEl = document.querySelector('#redo-button');
 const commentButtonEl = document.querySelector('#comment-button');
 const commentViewsToggleEl = document.querySelector('#comment-views-toggle');
 const colorButtonEl = document.querySelector('#color-button');
+const colorWrapEl = document.querySelector('#color-wrap');
+const colorPopoverEl = document.querySelector('#color-popover');
 const colorChipEl = document.querySelector('#color-chip');
 const searchButtonEl = document.querySelector('#search-button');
 const searchPanelEl = document.querySelector('#search-panel');
@@ -211,6 +227,8 @@ const toolsPanelEl = document.querySelector('#tools-panel');
 const colorPaletteEl = document.querySelector('#color-palette');
 const strokeColorEl = document.querySelector('#stroke-color');
 const strokeWidthEl = document.querySelector('#stroke-width');
+const highlighterWidthEl = document.querySelector('#highlighter-width');
+const highlighterOpacityEl = document.querySelector('#highlighter-opacity');
 const workspaceEl = document.querySelector('.workspace');
 const pagesEl = document.querySelector('#pages');
 const messageBoxEl = document.querySelector('#message-box');
@@ -355,11 +373,26 @@ const toolsPanelController = createToolsPanelController({
   panelEl: toolsPanelEl,
   toggleEl: menuButtonEl,
   colorButtonEl,
+  colorWrapEl,
+  colorPopoverEl,
+  customColorEl: strokeColorEl,
   contentShellEl,
   workspaceEl,
   onLayoutChange: scheduleResponsiveRerender,
+  onColorSelect: (color) => viewportController.setActiveColor(color),
 });
 toolsPanelController.updateMode(state.mode);
+
+createToolbarVisibilityController({
+  appEl: app,
+  toolbarEl,
+  revealEl: toolbarRevealEl,
+  pinButtonEl: toolbarPinEl,
+  icons,
+  isPopupOpen: () =>
+    !colorPopoverEl.hidden || !searchPanelEl.hidden || !toolsPanelEl.hidden,
+  onLayoutChange: scheduleResponsiveRerender,
+});
 
 interactionController = createInteractionController({
   state,
@@ -599,6 +632,8 @@ async function rerenderPages() {
   drawingLayer = createDrawingLayer(state.pageEntries, {
     getColor: () => state.color,
     getWidth: () => Number(strokeWidthEl.value),
+    getHighlighterWidth: () => Number(highlighterWidthEl.value),
+    getHighlighterOpacity: () => Number(highlighterOpacityEl.value) / 100,
     getHighlights: () => state.sessionAnnotations.highlights,
     getMode: () => state.mode,
     getAllowFingerDrawing: () => state.allowFingerDrawing,
@@ -1076,15 +1111,6 @@ commentViewsToggleEl.addEventListener('click', () => {
   }
   updateCommentViewsToggleState();
   renderComments();
-});
-
-colorPaletteEl.addEventListener('click', (event) => {
-  const swatch = event.target.closest('.color-swatch');
-  if (!swatch) {
-    return;
-  }
-
-  setActiveColor(swatch.dataset.color);
 });
 
 strokeColorEl.addEventListener('input', () => {

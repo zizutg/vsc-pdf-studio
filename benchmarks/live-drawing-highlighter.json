@@ -1,0 +1,1315 @@
+{
+  "measuredAt": "2026-10-07T01:57:47.696Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M2",
+    "node": "v22.17.0",
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/154.0.8037.98",
+      "revision": "@b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+      "jsVersion": "15.4.80.20"
+    }
+  },
+  "parameters": {
+    "pointsPerStroke": 100,
+    "moves": 30,
+    "repetitions": 3,
+    "viewport": "1200x900 @ 1x",
+    "pdfSize": "600x800",
+    "input": "CDP mouse events",
+    "serialization": "excluded; host messaging is stubbed",
+    "deferredRendering": "drawing rAF callbacks timed separately; final preview settled before release",
+    "burst": "30 synthetic moves in one task during a trusted mouse capture; scheduling stress only"
+  },
+  "sourceCommit": "88d39e25ca1938b278cfdeba9af7d13e54e18b79",
+  "sourceOverride": null,
+  "pixelChecks": [
+    {
+      "name": "straight",
+      "width": 1,
+      "scale": 1,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 314,
+      "finalChangedPixels": 21,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "straight",
+      "width": 1,
+      "scale": 2,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 2,
+      "finalChangedPixels": 4,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "straight",
+      "width": 3,
+      "scale": 1,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 318,
+      "finalChangedPixels": 26,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "straight",
+      "width": 3,
+      "scale": 2,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 8,
+      "finalChangedPixels": 13,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "straight",
+      "width": 6,
+      "scale": 1,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 8,
+      "finalChangedPixels": 12,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "straight",
+      "width": 6,
+      "scale": 2,
+      "originalPoints": 41,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 16,
+      "finalChangedPixels": 36,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 1,
+      "scale": 1,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 572,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 1,
+      "scale": 2,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 174,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 3,
+      "scale": 1,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 2,
+      "previewChangedPixels": 558,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 3,
+      "scale": 2,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 187,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 6,
+      "scale": 1,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 1,
+      "previewChangedPixels": 101,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "corners",
+      "width": 6,
+      "scale": 2,
+      "originalPoints": 6,
+      "savedPoints": 6,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 1,
+      "previewChangedPixels": 194,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 1,
+      "scale": 1,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 1187,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 1,
+      "scale": 2,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 2497,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 3,
+      "scale": 1,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 1173,
+      "finalChangedPixels": 2,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 3,
+      "scale": 2,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 2393,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 6,
+      "scale": 1,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 1197,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "crossing",
+      "width": 6,
+      "scale": 2,
+      "originalPoints": 61,
+      "savedPoints": 60,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 2282,
+      "finalChangedPixels": 0,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 1,
+      "scale": 1,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 319,
+      "finalChangedPixels": 21,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 1,
+      "scale": 2,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 321,
+      "finalChangedPixels": 324,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 3,
+      "scale": 1,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 322,
+      "finalChangedPixels": 26,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 3,
+      "scale": 2,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 327,
+      "finalChangedPixels": 333,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 6,
+      "scale": 1,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 11,
+      "finalChangedPixels": 12,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "jitter",
+      "width": 6,
+      "scale": 2,
+      "originalPoints": 81,
+      "savedPoints": 2,
+      "missingCorePixels": 0,
+      "partialCoveragePixels": 0,
+      "previewChangedPixels": 182,
+      "finalChangedPixels": 278,
+      "finalMissingCorePixels": 0,
+      "finalMatchesReference": true
+    },
+    {
+      "name": "highlighter-preview-and-commit",
+      "opacity": 0.3
+    }
+  ],
+  "sourceHashes": {
+    "media/drawingLayer.js": "50b35d6eaa75f36806df2c1e681e645a4413e78c0993ea18153987e98fde98a1",
+    "media/main.js": "3c6f68991da393b664214b1ae7ea419cb93c65cfb55f3b9f03dbcb6807ab3e79",
+    "benchmarks/liveDrawing.mjs": "bacc5c7b49088a1a7ea9fda32a996410ef67d924004dfe712f4c22ed76e4ea7a",
+    "benchmarks/drawingPixels.mjs": "fa6057e91b98dd69d7a9acfe33b5361441215dc2714c98068c0d6907cd2f5fd3"
+  },
+  "results": [
+    {
+      "name": "empty",
+      "pages": 1,
+      "strokesPerPage": 0,
+      "cpuThrottleRate": 1,
+      "totalExistingPoints": 0,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 1,
+          "max": 1
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [4.8, 3.9, 4.8],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.5,
+          "p95": 1.4,
+          "max": 1.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 0.267
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.5,
+          "p95": 1.4,
+          "max": 1.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 0.033
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.4,
+          "p95": 0.8,
+          "max": 0.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 0.067
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.3,
+          "p95": 0.5,
+          "max": 0.5
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 0.033
+      }
+    },
+    {
+      "name": "moderate",
+      "pages": 1,
+      "strokesPerPage": 250,
+      "cpuThrottleRate": 1,
+      "totalExistingPoints": 25000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.1,
+          "max": 0.1
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [2.3, 1.3, 2.9],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 45.3,
+          "p95": 55.8,
+          "max": 55.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 251,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 45.3
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 17.3,
+          "p95": 18.1,
+          "max": 18.1
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 250,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 15.367
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 13.8,
+          "p95": 19.9,
+          "max": 19.9
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 251,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 14.567
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 31.2,
+          "p95": 31.9,
+          "max": 31.9
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 250,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 27.733
+      }
+    },
+    {
+      "name": "dense",
+      "pages": 1,
+      "strokesPerPage": 1000,
+      "cpuThrottleRate": 1,
+      "totalExistingPoints": 100000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.1
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [2.5, 3.7, 2.9],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 157,
+          "p95": 160.3,
+          "max": 160.3
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1001,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 145.333
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 63,
+          "p95": 69.7,
+          "max": 69.7
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1000,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 59.467
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 65.7,
+          "p95": 79.3,
+          "max": 79.3
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1001,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 61.333
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 125.8,
+          "p95": 141.2,
+          "max": 141.2
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1000,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 117.867
+      }
+    },
+    {
+      "name": "distributed",
+      "pages": 10,
+      "strokesPerPage": 100,
+      "cpuThrottleRate": 1,
+      "totalExistingPoints": 100000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.2,
+          "max": 0.2
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [3.4, 4.3, 4.3],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 141,
+          "p95": 141,
+          "max": 141
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 101,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 123.667
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 50.4,
+          "p95": 57.3,
+          "max": 57.3
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 100,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 50.733
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 57.8,
+          "p95": 59.4,
+          "max": 59.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 101,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 57.1
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 122.6,
+          "p95": 124.4,
+          "max": 124.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 100,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 121.433
+      }
+    },
+    {
+      "name": "empty",
+      "pages": 1,
+      "strokesPerPage": 0,
+      "cpuThrottleRate": 4,
+      "totalExistingPoints": 0,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.5,
+          "p95": 0.7,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.2,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.2,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [3.3, 2.6, 2.6],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 1.2,
+          "p95": 1.8,
+          "max": 1.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 0.367
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 1.1,
+          "p95": 1.4,
+          "max": 1.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 0
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.5,
+          "p95": 1,
+          "max": 1
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 0
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.2,
+          "p95": 0.8,
+          "max": 0.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 0.233
+      }
+    },
+    {
+      "name": "moderate",
+      "pages": 1,
+      "strokesPerPage": 250,
+      "cpuThrottleRate": 4,
+      "totalExistingPoints": 25000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.1,
+          "p95": 0.7,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.2,
+          "max": 0.5
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [1.3, 2.6, 2.6],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.5
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 112.2,
+          "p95": 113.4,
+          "max": 113.4
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 251,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 107.967
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 65,
+          "p95": 66.9,
+          "max": 66.9
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 250,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 58.4
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 57.1,
+          "p95": 57.7,
+          "max": 57.7
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 251,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 53.5
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 121.7,
+          "p95": 123.9,
+          "max": 123.9
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 250,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 107.233
+      }
+    },
+    {
+      "name": "dense",
+      "pages": 1,
+      "strokesPerPage": 1000,
+      "cpuThrottleRate": 4,
+      "totalExistingPoints": 100000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.5,
+          "p95": 0.9,
+          "max": 0.9
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.1,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [1.4, 3.2, 1.6],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.2
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 466.7,
+          "p95": 496.6,
+          "max": 496.6
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1001,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 455.433
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 288.5,
+          "p95": 294.3,
+          "max": 294.3
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1000,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 246.8
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 232.6,
+          "p95": 242.5,
+          "max": 242.5
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1001,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 222.133
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 461.8,
+          "p95": 464.8,
+          "max": 464.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 1000,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 436.633
+      }
+    },
+    {
+      "name": "distributed",
+      "pages": 10,
+      "strokesPerPage": 100,
+      "cpuThrottleRate": 4,
+      "totalExistingPoints": 100000,
+      "start": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 0.4,
+          "p95": 0.7,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "move": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.3,
+          "max": 0.4
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 0,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "deferredPreview": {
+        "events": 90,
+        "handlerMs": {
+          "p50": 0,
+          "p95": 0.4,
+          "max": 0.7
+        },
+        "clearsPerEvent": 0,
+        "strokePaintsPerEvent": 1,
+        "cloneCallsPerEvent": 0,
+        "cloneMsPerEvent": 0
+      },
+      "liveWorkMsPerStroke": [2.6, 2.8, 3.5],
+      "burst": {
+        "moves": {
+          "events": 90,
+          "handlerMs": {
+            "p50": 0,
+            "p95": 0,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 0,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "deferredPreview": {
+          "events": 3,
+          "handlerMs": {
+            "p50": 0.1,
+            "p95": 0.1,
+            "max": 0.1
+          },
+          "clearsPerEvent": 0,
+          "strokePaintsPerEvent": 1,
+          "cloneCallsPerEvent": 0,
+          "cloneMsPerEvent": 0
+        },
+        "previewFramesPerRun": [1, 1, 1],
+        "totalPaintsPerRun": [1, 1, 1]
+      },
+      "finish": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 475.5,
+          "p95": 488.8,
+          "max": 488.8
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 101,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 463.067
+      },
+      "undo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 244.9,
+          "p95": 258.9,
+          "max": 258.9
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 100,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 231.967
+      },
+      "redo": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 232.5,
+          "p95": 245,
+          "max": 245
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 101,
+        "cloneCallsPerEvent": 3,
+        "cloneMsPerEvent": 230.467
+      },
+      "erase": {
+        "events": 3,
+        "handlerMs": {
+          "p50": 504.8,
+          "p95": 509.7,
+          "max": 509.7
+        },
+        "clearsPerEvent": 1,
+        "strokePaintsPerEvent": 100,
+        "cloneCallsPerEvent": 6,
+        "cloneMsPerEvent": 475.667
+      }
+    }
+  ]
+}

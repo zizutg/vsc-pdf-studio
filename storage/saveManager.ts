@@ -15,6 +15,7 @@ import {
   PDFHexString,
   PDFName,
   PDFNumber,
+  PDFObjectCopier,
   PDFOptionList,
   PDFPage,
   PDFRadioGroup,
@@ -324,12 +325,17 @@ export class SaveManager {
     const embeddedBase = pdfDocument.catalog.lookup(
       PDFName.of(PDF_STUDIO_BASE_KEY)
     );
-    const basePdfBytes = await resolveSessionBasePdfBytes(
+    const resolvedBasePdfBytes = await resolveSessionBasePdfBytes(
       pdfBytes,
       pdfDocument,
       formFields,
       embeddedBase,
       sanitizedAnnotations
+    );
+    const basePdfBytes = await reconcileNativeShapeAnnotations(
+      resolvedBasePdfBytes,
+      pdfBytes,
+      pdfDocument
     );
     this.sessionBasePdf.set(cacheKey, new Uint8Array(basePdfBytes));
 
@@ -536,6 +542,90 @@ async function resolveSessionBasePdfBytes(
   }
 
   return embeddedBaseBytes;
+}
+
+const NATIVE_SHAPE_SUBTYPES = new Set([
+  'Square',
+  'Circle',
+  'Line',
+  'Polygon',
+  'PolyLine',
+  'Ink',
+]);
+
+function isNativeShapeAnnotation(annotation: PDFDict): boolean {
+  const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName);
+  return (
+    subtype !== undefined && NATIVE_SHAPE_SUBTYPES.has(subtype.decodeText())
+  );
+}
+
+async function reconcileNativeShapeAnnotations(
+  basePdfBytes: Uint8Array,
+  livePdfBytes: Uint8Array,
+  livePdfDocument: PDFDocument
+): Promise<Uint8Array> {
+  if (basePdfBytes === livePdfBytes) {
+    return basePdfBytes;
+  }
+
+  const basePdfDocument = await PDFDocument.load(basePdfBytes);
+  const pageCount = Math.min(
+    basePdfDocument.getPageCount(),
+    livePdfDocument.getPageCount()
+  );
+  const pagesToSync: number[] = [];
+
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const baseAnnots = basePdfDocument.getPage(pageIndex).node.Annots();
+    const liveAnnots = livePdfDocument.getPage(pageIndex).node.Annots();
+    const hasShape = [baseAnnots, liveAnnots].some((annots) => {
+      if (!annots) return false;
+      for (let index = 0; index < annots.size(); index += 1) {
+        const annotation = annots.lookupMaybe(index, PDFDict);
+        if (annotation && isNativeShapeAnnotation(annotation)) return true;
+      }
+      return false;
+    });
+    if (hasShape) pagesToSync.push(pageIndex);
+  }
+
+  if (!pagesToSync.length) return basePdfBytes;
+
+  const copier = PDFObjectCopier.for(
+    livePdfDocument.context,
+    basePdfDocument.context
+  );
+  for (const pageIndex of pagesToSync) {
+    const basePage = basePdfDocument.getPage(pageIndex);
+    const baseAnnots = basePage.node.Annots();
+    if (baseAnnots) {
+      for (let index = baseAnnots.size() - 1; index >= 0; index -= 1) {
+        const annotation = baseAnnots.lookupMaybe(index, PDFDict);
+        if (annotation && isNativeShapeAnnotation(annotation)) {
+          baseAnnots.remove(index);
+        }
+      }
+    }
+
+    const liveAnnots = livePdfDocument.getPage(pageIndex).node.Annots();
+    if (!liveAnnots) continue;
+    for (let index = 0; index < liveAnnots.size(); index += 1) {
+      const annotation = liveAnnots.lookupMaybe(index, PDFDict);
+      if (!annotation || !isNativeShapeAnnotation(annotation)) continue;
+
+      // /P must refer to the destination page, not a copied live page.
+      const sourceWithoutPage = PDFDict.withContext(livePdfDocument.context);
+      for (const [key, value] of annotation.entries()) {
+        if (key.decodeText() !== 'P') sourceWithoutPage.set(key, value);
+      }
+      const copied = copier.copy(sourceWithoutPage) as PDFDict;
+      copied.set(PDFName.of('P'), basePage.ref);
+      basePage.node.addAnnot(basePdfDocument.context.register(copied));
+    }
+  }
+
+  return basePdfDocument.save();
 }
 
 async function materializeFormFieldsOnBase(

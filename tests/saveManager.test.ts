@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { getDocument, OPS } from 'pdfjs-dist';
 import {
   decodePDFRawStream,
+  PDFDict,
   PDFDocument,
   PDFHexString,
   PDFName,
@@ -275,6 +276,116 @@ test('SaveManager can persist a new Studio comment as a native PDF text annotati
       }
 
       assert.equal(foundTextComment, true);
+    }
+  );
+});
+
+test('Adobe shapes on a Studio-ink page remain visible and survive another save', async () => {
+  await withTempPdf(
+    async () => {
+      const pdf = await PDFDocument.create();
+      pdf.addPage([400, 500]);
+      return pdf.save();
+    },
+    async (pdfPath, uri) => {
+      const manager = new SaveManager();
+      const annotations: AnnotationDocument = {
+        ...emptyAnnotationDocument(),
+        strokes: [
+          {
+            id: 'studio-ink',
+            color: '#ef4444',
+            width: 3,
+            page: 1,
+            viewportWidth: 400,
+            viewportHeight: 500,
+            points: [
+              { x: 10, y: 20 },
+              { x: 50, y: 60 },
+            ],
+          },
+        ],
+      };
+      await manager.getPdfBytes(uri as any);
+      await manager.saveDocument(uri as any, annotations, []);
+
+      const adobePdf = await PDFDocument.load(await fs.readFile(pdfPath));
+      const page = adobePdf.getPage(0);
+      const appearance = adobePdf.context.flateStream(
+        'q 0 0 1 RG 2 w 0 0 80 40 re S Q',
+        {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: adobePdf.context.obj([0, 0, 80, 40]),
+          Resources: adobePdf.context.obj({}),
+        }
+      );
+      const appearanceRef = adobePdf.context.register(appearance);
+      for (const [index, subtype] of ['Square', 'Circle', 'Line'].entries()) {
+        const shape = adobePdf.context.obj({
+          Type: PDFName.of('Annot'),
+          Subtype: PDFName.of(subtype),
+          Rect: adobePdf.context.obj([
+            100,
+            300 - index * 50,
+            180,
+            340 - index * 50,
+          ]),
+          NM: PDFHexString.fromText(`adobe-shape-${index}`),
+          F: 4,
+          AP: adobePdf.context.obj({ N: appearanceRef }),
+          P: page.ref,
+        });
+        if (subtype === 'Line') {
+          shape.set(
+            PDFName.of('L'),
+            adobePdf.context.obj([100, 200, 180, 240])
+          );
+        }
+        page.node.addAnnot(adobePdf.context.register(shape));
+      }
+      await fs.writeFile(pdfPath, await adobePdf.save());
+
+      manager.disposeSession(uri as any);
+      const renderingBase = await manager.getPdfBytes(uri as any);
+      const pdfjs = await getDocument({ data: renderingBase }).promise;
+      const visibleAnnotations = await (
+        await pdfjs.getPage(1)
+      ).getAnnotations({
+        intent: 'display',
+      });
+      assert.equal(visibleAnnotations.length, 3);
+
+      const reopenedAnnotations = await manager.getAnnotations(uri as any);
+      assert.equal(reopenedAnnotations.strokes.length, 1);
+      await manager.saveDocument(uri as any, reopenedAnnotations, []);
+      manager.disposeSession(uri as any);
+
+      const reopenedBase = await PDFDocument.load(
+        await manager.getPdfBytes(uri as any)
+      );
+      const shapeAnnots = reopenedBase.getPage(0).node.Annots();
+      assert.ok(shapeAnnots);
+      assert.equal(shapeAnnots.size(), 3);
+      for (let index = 0; index < shapeAnnots.size(); index += 1) {
+        const shape: PDFDict = shapeAnnots.lookup(index, PDFDict);
+        assert.ok(shape.lookupMaybe(PDFName.of('AP'), PDFDict));
+        assert.equal(
+          shape.get(PDFName.of('P'))?.toString(),
+          reopenedBase.getPage(0).ref.toString()
+        );
+      }
+
+      const externallyEdited = await PDFDocument.load(
+        await fs.readFile(pdfPath)
+      );
+      externallyEdited.getPage(0).node.Annots()?.remove(0);
+      await fs.writeFile(pdfPath, await externallyEdited.save());
+      manager.disposeSession(uri as any);
+      const baseAfterDeletion = await PDFDocument.load(
+        await manager.getPdfBytes(uri as any)
+      );
+      assert.equal(baseAfterDeletion.getPage(0).node.Annots()?.size(), 2);
     }
   );
 });

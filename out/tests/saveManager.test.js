@@ -253,6 +253,90 @@ function decodeAnnotationContents(annotation) {
         strict_1.default.equal(foundTextComment, true);
     });
 });
+(0, node_test_1.default)('Adobe shapes on a Studio-ink page remain visible and survive another save', async () => {
+    await withTempPdf(async () => {
+        const pdf = await pdf_lib_1.PDFDocument.create();
+        pdf.addPage([400, 500]);
+        return pdf.save();
+    }, async (pdfPath, uri) => {
+        const manager = new saveManager_1.SaveManager();
+        const annotations = {
+            ...(0, annotation_1.emptyAnnotationDocument)(),
+            strokes: [
+                {
+                    id: 'studio-ink',
+                    color: '#ef4444',
+                    width: 3,
+                    page: 1,
+                    viewportWidth: 400,
+                    viewportHeight: 500,
+                    points: [
+                        { x: 10, y: 20 },
+                        { x: 50, y: 60 },
+                    ],
+                },
+            ],
+        };
+        await manager.getPdfBytes(uri);
+        await manager.saveDocument(uri, annotations, []);
+        const adobePdf = await pdf_lib_1.PDFDocument.load(await fs.readFile(pdfPath));
+        const page = adobePdf.getPage(0);
+        const appearance = adobePdf.context.flateStream('q 0 0 1 RG 2 w 0 0 80 40 re S Q', {
+            Type: 'XObject',
+            Subtype: 'Form',
+            BBox: adobePdf.context.obj([0, 0, 80, 40]),
+            Resources: adobePdf.context.obj({}),
+        });
+        const appearanceRef = adobePdf.context.register(appearance);
+        for (const [index, subtype] of ['Square', 'Circle', 'Line'].entries()) {
+            const shape = adobePdf.context.obj({
+                Type: pdf_lib_1.PDFName.of('Annot'),
+                Subtype: pdf_lib_1.PDFName.of(subtype),
+                Rect: adobePdf.context.obj([
+                    100,
+                    300 - index * 50,
+                    180,
+                    340 - index * 50,
+                ]),
+                NM: pdf_lib_1.PDFHexString.fromText(`adobe-shape-${index}`),
+                F: 4,
+                AP: adobePdf.context.obj({ N: appearanceRef }),
+                P: page.ref,
+            });
+            if (subtype === 'Line') {
+                shape.set(pdf_lib_1.PDFName.of('L'), adobePdf.context.obj([100, 200, 180, 240]));
+            }
+            page.node.addAnnot(adobePdf.context.register(shape));
+        }
+        await fs.writeFile(pdfPath, await adobePdf.save());
+        manager.disposeSession(uri);
+        const renderingBase = await manager.getPdfBytes(uri);
+        const pdfjs = await (0, pdfjs_dist_1.getDocument)({ data: renderingBase }).promise;
+        const visibleAnnotations = await (await pdfjs.getPage(1)).getAnnotations({
+            intent: 'display',
+        });
+        strict_1.default.equal(visibleAnnotations.length, 3);
+        const reopenedAnnotations = await manager.getAnnotations(uri);
+        strict_1.default.equal(reopenedAnnotations.strokes.length, 1);
+        await manager.saveDocument(uri, reopenedAnnotations, []);
+        manager.disposeSession(uri);
+        const reopenedBase = await pdf_lib_1.PDFDocument.load(await manager.getPdfBytes(uri));
+        const shapeAnnots = reopenedBase.getPage(0).node.Annots();
+        strict_1.default.ok(shapeAnnots);
+        strict_1.default.equal(shapeAnnots.size(), 3);
+        for (let index = 0; index < shapeAnnots.size(); index += 1) {
+            const shape = shapeAnnots.lookup(index, pdf_lib_1.PDFDict);
+            strict_1.default.ok(shape.lookupMaybe(pdf_lib_1.PDFName.of('AP'), pdf_lib_1.PDFDict));
+            strict_1.default.equal(shape.get(pdf_lib_1.PDFName.of('P'))?.toString(), reopenedBase.getPage(0).ref.toString());
+        }
+        const externallyEdited = await pdf_lib_1.PDFDocument.load(await fs.readFile(pdfPath));
+        externallyEdited.getPage(0).node.Annots()?.remove(0);
+        await fs.writeFile(pdfPath, await externallyEdited.save());
+        manager.disposeSession(uri);
+        const baseAfterDeletion = await pdf_lib_1.PDFDocument.load(await manager.getPdfBytes(uri));
+        strict_1.default.equal(baseAfterDeletion.getPage(0).node.Annots()?.size(), 2);
+    });
+});
 (0, node_test_1.default)('SaveManager reads large legacy annotation strings without overflowing the stack', async () => {
     await withTempPdf(async () => {
         const pdf = await pdf_lib_1.PDFDocument.create();

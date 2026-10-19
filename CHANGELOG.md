@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.9
+
+- Preserve native Adobe shape annotations when reopening PDFs with existing Studio ink
+- Reduce the extension icon size to meet Marketplace upload limits
+
 ## 0.0.8
 
 - Added clickable PDF links in Select mode for websites, email addresses, and internal destinations

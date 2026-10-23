@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added cross-platform CI, Extension Development Host smoke tests, mixed-PDF round-trip regression tests, private Acrobat/Foxit fixture checks, and drawing/save performance gates
+- Added an ignored local release checklist and blocked release checks when required third-party fixtures or manual sign-offs are missing
+- Fixed a disposed-webview access found by the new host smoke test
+
 ## 0.0.9
 
 - Preserve native Adobe shape annotations when reopening PDFs with existing Studio ink

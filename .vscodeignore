@@ -5,6 +5,10 @@
 eslint.config.mjs
 tests/**
 benchmarks/**
+scripts/**
+.github/**
+.release-checklist.local.md
+.vscode-test/**
 .drawing-benchmark-*/**
 out/tests/**
 demo.gif

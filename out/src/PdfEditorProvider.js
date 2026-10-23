@@ -60,8 +60,9 @@ class PdfEditorProvider {
     }
     async resolveCustomEditor(document, webviewPanel) {
         const documentKey = document.uri.toString();
+        const webview = webviewPanel.webview;
         const webviews = this.webviewsByDocument.get(documentKey) ?? new Set();
-        webviews.add(webviewPanel.webview);
+        webviews.add(webview);
         this.webviewsByDocument.set(documentKey, webviews);
         webviewPanel.webview.options = {
             enableScripts: true,
@@ -107,7 +108,7 @@ class PdfEditorProvider {
             if (!views) {
                 return;
             }
-            views.delete(webviewPanel.webview);
+            views.delete(webview);
             if (!views.size) {
                 this.webviewsByDocument.delete(documentKey);
             }

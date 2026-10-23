@@ -1,5 +1,7 @@
 # Live Drawing Baseline
 
+The separate `npm run benchmark:save` command measures a generated four-page mixed document with 400 strokes, 40 highlights, 12 comments, one form field, and one native shape. Its recorded baseline is `save-roundtrip-baseline.json`. It checks state preservation and repeated-save file growth; elapsed times are recorded for review, not used as cross-machine pass/fail thresholds. `npm run check:performance` runs both the drawing and save gates.
+
 ## Run
 
 Requires Node 22+, installed project dependencies, and Chrome/Chromium. No additional npm dependencies are needed.

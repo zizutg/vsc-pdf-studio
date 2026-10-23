@@ -36,9 +36,10 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
     webviewPanel: vscode.WebviewPanel
   ): Promise<void> {
     const documentKey = document.uri.toString();
+    const webview = webviewPanel.webview;
     const webviews =
       this.webviewsByDocument.get(documentKey) ?? new Set<vscode.Webview>();
-    webviews.add(webviewPanel.webview);
+    webviews.add(webview);
     this.webviewsByDocument.set(documentKey, webviews);
 
     webviewPanel.webview.options = {
@@ -104,7 +105,7 @@ export class PdfEditorProvider implements vscode.CustomReadonlyEditorProvider {
         return;
       }
 
-      views.delete(webviewPanel.webview);
+      views.delete(webview);
       if (!views.size) {
         this.webviewsByDocument.delete(documentKey);
       }

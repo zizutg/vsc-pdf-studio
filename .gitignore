@@ -1,3 +1,6 @@
 node_modules
 .drawing-benchmark-*/
 benchmarks/live-drawing-latest.json
+tests/fixtures/private/
+.release-checklist.local.md
+.vscode-test/

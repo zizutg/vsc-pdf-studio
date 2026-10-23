@@ -64,6 +64,8 @@ This ensures PDFs are tracked as binary assets. It does not create human-readabl
 
 ## Development
 
+Run `npm run check` before merging changes. For host smoke tests, use `npm run test:integration`. For the full release gate (including private Acrobat/Foxit fixtures and the untracked manual checklist), use `npm run release:check`. See [quality gates](docs/quality-gates.md) for fixture setup and limitations.
+
 For a repeatable live-drawing performance baseline, run `npm run benchmark:drawing` (Node 22+ and Chrome/Chromium required). Set `CHROME_PATH` if Chrome is installed elsewhere. See [the drawing benchmark report](benchmarks/README.md) for methodology, results, and limitations. This developer-only benchmark does not modify user PDFs.
 
 ```bash

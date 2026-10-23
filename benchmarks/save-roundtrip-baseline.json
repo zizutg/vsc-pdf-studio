@@ -1,0 +1,23 @@
+{
+  "measuredAt": "2026-10-23",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v22.17.0",
+    "cpu": "Apple M2"
+  },
+  "scenario": {
+    "pages": 4,
+    "strokes": 400,
+    "pointsPerStroke": 100,
+    "highlights": 40,
+    "comments": 12,
+    "formFields": 1,
+    "nativeShapes": 1
+  },
+  "firstSaveMs": 1063.64,
+  "reopenMs": 116.21,
+  "secondSaveMs": 987.72,
+  "firstBytes": 1142173,
+  "secondBytes": 1142503
+}
